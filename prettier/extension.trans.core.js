@@ -1,7 +1,7 @@
 var extensionExports = {}
 defineProperties(extensionExports, { activate: () => activateExtension, createExtensionContext: () => createContext, onDeactivate: () => deactivateExtension })
 module.exports = handleEsModuleExports(extensionExports)
-var Bx = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 i$().install()
 var vscode = require('vscode')
 var events = require('events')
@@ -1276,7 +1276,7 @@ var defaultValuesCache
 function getDefaultValues() {
   if (!defaultValuesCache) {
     defaultValuesCache = new Map()
-    let settings = config.contributes.configuration.properties
+    let settings = packageInfo.contributes.configuration.properties
     for (let key of Object.keys(settings)) typeof settings[key].default < 'u' && defaultValuesCache.set(key, settings[key].default)
   }
   return defaultValuesCache
@@ -1329,41 +1329,46 @@ var settings = {
   WorkspaceExperimentalFileLimit: validateAndFormatSetting('advanced.workspace.experimental.fileLimit', 0),
   InlineChatStreaming: validateAndFormatSetting('advanced.inlineChatStreaming', 'progressive'),
 }
+
 var LoggerManager = class {
-    constructor(e, r) {
-      this.logTargets = e
-      this.configurationService = r
-      this.loggers = new Map()
-      this.promptResponseLoggers = new Map()
-      this.myLogTarget = {
-        logIt: (n, i, ...o) => {
-          this.logTargets.forEach(s => s.logIt(n, i, ...o))
-        },
-      }
-    }
-    get defaultLogger() {
-      return this.getLogger('extension')
-    }
-    getLogger(e) {
-      return LoggerManager._getLogger(e, this.loggers, r => new Logger(r, this.myLogTarget, this.configurationService))
-    }
-    getPromptResponseLogger(e) {
-      return LoggerManager._getLogger(e, this.promptResponseLoggers, r => new ConversationLogger(r, this.myLogTarget, this.configurationService))
-    }
-    registerAppender(e) {
-      return (
-        this.logTargets.push(e),
-        createDisposable(() => {
-          let r = this.logTargets.indexOf(e)
-          r !== -1 && this.logTargets.splice(r, 1)
-        })
-      )
-    }
-    static _getLogger(e, r, n) {
-      let i = r.get(e)
-      return typeof i > 'u' && ((i = n(e)), r.set(e, i)), i
+  constructor(logTargets, configurationService) {
+    this.logTargets = logTargets
+    this.configurationService = configurationService
+    this.loggers = new Map()
+    this.promptResponseLoggers = new Map()
+    this.myLogTarget = {
+      logIt: (level, message, ...args) => {
+        this.logTargets.forEach(target => target.logIt(level, message, ...args))
+      },
     }
   }
+  get defaultLogger() {
+    return this.getLogger('extension')
+  }
+  getLogger(name) {
+    return LoggerManager._getLogger(name, this.loggers, loggerName => new Logger(loggerName, this.myLogTarget, this.configurationService))
+  }
+  getPromptResponseLogger(name) {
+    return LoggerManager._getLogger(name, this.promptResponseLoggers, loggerName => new ConversationLogger(loggerName, this.myLogTarget, this.configurationService))
+  }
+  registerAppender(appender) {
+    return (
+      this.logTargets.push(appender),
+      createDisposable(() => {
+        let index = this.logTargets.indexOf(appender)
+        index !== -1 && this.logTargets.splice(index, 1)
+      })
+    )
+  }
+  static _getLogger(name, loggersMap, loggerCreator) {
+    let logger = loggersMap.get(name)
+    if (typeof logger === 'undefined') {
+      logger = loggerCreator(name)
+      loggersMap.set(name, logger)
+    }
+    return logger
+  }
+}
 
 var LogLevel = ((level => (
   (level[(level.DEBUG = 0)] = 'DEBUG'),
@@ -2242,6 +2247,8 @@ function formatStringWithArguments(string, args) {
 function format(t, string, ...args) {
   return formatStringWithArguments(string, args)
 }
+
+//  TODO：环境信息
 var defaultLocale = 'en',
 isWindows = false,
 isMac = false,
@@ -3110,8 +3117,8 @@ pathDelimiter = isWindows ? win32PathOperations.delimiter : posixPathOperations.
 var schemeRegex = /^\w[\w\d+.-]*$/,
 singleSlashRegex = /^\//,
 doubleSlashRegex = /^\/\//
-function validateUri(uri, flag) {
-  if (!uri.scheme && flag)
+function validateUri(uri, isWindows) {
+  if (!uri.scheme && isWindows)
     throw new Error(
       `[UriError]: Scheme is missing: {scheme: "", authority: "${uri.authority}", path: "${uri.path}", query: "${uri.query}", fragment: "${uri.fragment}"}`
     )
@@ -3226,12 +3233,12 @@ Uri = class Uri {
       if (data instanceof Uri) return data
       {
         let revivedUri = new UriWithFileSystemPath(data)
-        return (revivedUri._formatted = data.external ?? null), (revivedUri._fsPath = data._sep === pathSeparator ? data.fsPath ?? null : null), revivedUri
+        return (revivedUri._formatted = data.external ?? null), (revivedUri._fsPath = data._sep === pathSeparator1 ? data.fsPath ?? null : null), revivedUri
       }
     } else return data
   }
 }
-var pathSeparator = isWindowsFlag ? 1 : undefined;
+var pathSeparator1 = isWindowsFlag ? 1 : undefined;
 var UriWithFileSystemPath = class extends Uri {
   constructor() {
     super(...arguments);
@@ -3258,7 +3265,7 @@ var UriWithFileSystemPath = class extends Uri {
 
     if (this._fsPath) {
       json.fsPath = this._fsPath;
-      json._sep = pathSeparator;
+      json._sep = pathSeparator1;
     }
 
     if (this._formatted) {
@@ -3467,7 +3474,7 @@ function decodeUri(uri) {
 
 var githubDomain = 'github.com',
   defaultBaseUrl = `https://${githubDomain}`,
-  BaseBaseGithubApiServiceClass = class {},
+  BaseGithubApiService = class {},
   GitHubAPI = class extends BaseGithubApiService {
     constructor(baseUrl = defaultBaseUrl) {
       super();
@@ -4038,7 +4045,7 @@ function getConversationType(type) {
       return 'none'
   }
 }
-var defaultExportsHandler = handleDefaultExports(AW()),
+var tiktokenizer = handleDefaultExports(AW()),
   path = require('path'),
   Tokenizer = class {
     constructor() {}
@@ -4058,10 +4065,10 @@ var defaultExportsHandler = handleDefaultExports(AW()),
       return input ? this.tokenize(input).length : 0;
     }
     initTokenizer() {
-      return defaultExportsHandler.createTokenizer(
+      return tiktokenizer.createTokenizer(
         path.join(__dirname, './cl100k_base.tiktoken'),
-        defaultExportsHandler.getSpecialTokensByEncoder('cl100k_base'),
-        defaultExportsHandler.getRegexByEncoder('cl100k_base'),
+        tiktokenizer.getSpecialTokensByEncoder('cl100k_base'),
+        tiktokenizer.getRegexByEncoder('cl100k_base'),
         64e3
       );
     }
@@ -5696,6 +5703,7 @@ var DeferredAsyncIterable = class {
 }
 var crypto = require('crypto')
 
+// TODO: 埋点
 function generateTelemetryEvent() {
   let id = (0, crypto.randomUUID)(),
     event = TelemetryEvent.createAndMarkAsIssued({ messageId: id })
@@ -6176,19 +6184,6 @@ class ChatMLFetcher extends DataRetriever {
 }
 var GitContextModelIdentifier = createServiceIdentifier('IGitContextModel')
 var vscode = handleDefaultExports(require('vscode')),
-VscodePosition = vscode.Position,
-VscodeRange = vscode.Range,
-VscodeSelection = vscode.Selection,
-VscodeEventEmitter = vscode.EventEmitter,
-VscodeCancellationTokenSource = vscode.CancellationTokenSource
-var VscodeTextEdit = vscode.TextEdit,
-VscodeWorkspaceEdit = vscode.WorkspaceEdit,
-VscodeUri = vscode.Uri,
-VscodeMarkdownString = vscode.MarkdownString,
-VscodeInteractiveEditorResponseFeedbackKind = vscode.InteractiveEditorResponseFeedbackKind
-var VscodeDiagnosticSeverity = vscode.DiagnosticSeverity,
-VscodeExtensionMode = vscode.ExtensionMode,
-VscodeLocation = vscode.Location
 var vscodeL10n = { t: vscode.l10n.t }
 var path = handleDefaultExports(require('path'))
 var workerThreads = require('worker_threads'),
@@ -6270,27 +6265,27 @@ defineProperties(TreeSitterUtils, {
   TreeSitterOffsetRange: () => TreeSitterOffsetRange,
   _clean: () => cleanUp,
   _extractDoc: () => extractDoc,
-  _getCallExpressions: () => getCallExpressions,
-  _getClassDeclarations: () => getClassDeclarations,
+  _getCallExpressions: () => getCallExpressions2,
+  _getClassDeclarations: () => getClassDeclarations2,
   _getCoarseParentScope: () => getCoarseParentScope,
   _getDocumentableNodeIfOnIdentifier: () => getDocumentableNodeIfOnIdentifier,
   _getFixSelectionOfInterest: () => getFixSelectionOfInterest,
   _getFunctionBodies: () => getFunctionBodies,
-  _getFunctionDefinitions: () => getFunctionDefinitions,
+  _getFunctionDefinitions: () => getFunctionDefinitions2,
   _getFunctionPositions: () => getFunctionPositions,
-  _getNewExpressions: () => getNewExpressions,
+  _getNewExpressions: () => getNewExpressions2,
   _getNodeMatchingSelection: () => getNodeMatchingSelection,
   _getNodeToDocument: () => getNodeToDocument,
   _getSemanticChunkTree: () => getSemanticChunkTree,
-  _getTypeDeclarations: () => getTypeDeclarations,
-  _getTypeReferences: () => getTypeReferences,
+  _getTypeDeclarations: () => getTypeDeclarations2,
+  _getTypeReferences: () => getTypeReferences2,
   _parse: () => parseCode,
 })
 
 var path = handleDefaultExports(require('path')),
   QI = handleDefaultExports(eK());
 
-function binarySearch(array, value, comparator) {
+function binarySearch1(array, value, comparator) {
   let start = 0,
     end = array.length;
   while (start < end) {
@@ -7062,7 +7057,7 @@ class LanguageLoader {
 
   _loadLanguageFromFile(language) {
       let wasmFileName = `tree-sitter-${language === 'csharp' ? 'c-sharp' : language}.wasm`,
-          wasmFilePath = ob.basename(__dirname) === 'dist' ? ob.resolve(__dirname, wasmFileName) : ob.resolve(__dirname, '../../../dist', wasmFileName);
+          wasmFilePath = path.basename(__dirname) === 'dist' ? path.resolve(__dirname, wasmFileName) : path.resolve(__dirname, '../../../dist', wasmFileName);
       return QI.default.Language.load(wasmFilePath);
   }
 }
@@ -7171,7 +7166,7 @@ function getTokenMatches(language, parseTree) {
   return getQueryMatches(queries, parseTree);
 }
 
-async function getCallExpressions(language, code, range) {
+async function getCallExpressions2(language, code, range) {
   let parseTree = await parseCode(language, code)
   return getLanguageMatches(language, parseTree.rootNode).reduce((matches, capture) => {
     let callExpressionNode = capture.captures.find(c => c.name === 'call_expression').node
@@ -7194,7 +7189,7 @@ async function getCallExpressions(language, code, range) {
   }, [])
 }
 
-async function getFunctionDefinitions(language, code) {
+async function getFunctionDefinitions2(language, code) {
   let parseTree = await parseCode(language, code)
   return getFunctionMatches(language, parseTree.rootNode).map(match => {
     let functionNode = match.captures.find(capture => capture.name === 'function').node
@@ -7207,13 +7202,13 @@ async function getFunctionDefinitions(language, code) {
   })
 }
 
-async function getClassDeclarations(language, code) {
+async function getClassDeclarations2(language, code) {
   let parseTree = await parseCode(language, code)
   return getClassMatches(language, parseTree.rootNode).map(match => {
     let classDeclarationNode = match.captures.find(capture => capture.name === 'class_declaration').node
     return {
       identifier:
-        classDeclarationNode?.children.find(child => child.type === 'type_identifier' || child.type === 'identifier' || child.type === 'constant')?.text ??
+      classDeclarationNode?.children.find(child => child.type === 'type_identifier' || child.type === 'identifier' || child.type === 'constant')?.text ??
         '',
       text: classDeclarationNode.text,
       startIndex: classDeclarationNode.startIndex,
@@ -7222,7 +7217,7 @@ async function getClassDeclarations(language, code) {
   })
 }
 
-async function getTypeDeclarations(language, code) {
+async function getTypeDeclarations2(language, code) {
   let parseTree = await parseCode(language, code)
   return getTypeMatches(language, parseTree.rootNode).map(match => {
     let typeDeclarationNode = match.captures.find(capture => capture.name === 'type_declaration').node,
@@ -7237,7 +7232,7 @@ async function getTypeDeclarations(language, code) {
   })
 }
 
-async function getTypeReferences(language, code, range) {
+async function getTypeReferences2(language, code, range) {
   let parseTree = await parseCode(language, code)
   return getTypeIdentifierMatches(language, parseTree.rootNode).reduce((matches, capture) => {
     let typeIdentifierNode = capture.captures.find(c => c.name === 'type_identifier').node
@@ -7253,9 +7248,9 @@ async function getTypeReferences(language, code, range) {
   }, [])
 }
 
-async function getNewExpressions(code, language, range) {
-  let parsedCode = await parseCode(code, language)
-  return getNewExpressionMatches(code, parsedCode.rootNode).reduce((expressions, match) => {
+async function getNewExpressions2(language, code, range) {
+  let parsedCode = await parseCode(language, code)
+  return getNewExpressionMatches(language, parsedCode.rootNode).reduce((expressions, match) => {
     let newExpressionNode = match.captures.find(capture => capture.name === 'new_expression').node
     if (TreeSitterOffsetRange.doIntersect(range, newExpressionNode)) {
       expressions.push({
@@ -7356,7 +7351,7 @@ function getFilteredRangesAndIndex(language, children, range, isInitial) {
   if (
     (isInitial
       ? ((filteredRanges = children.filter(child => isNodeTypeOrControlStructure(language, child) || isStatementElement(language, child))),
-        (index = binarySearch(filteredRanges, range, (child, range) => PositionComparator.isBefore(child.startPosition, range.startPosition))),
+        (index = binarySearch1(filteredRanges, range, (child, range) => PositionComparator.isBefore(child.startPosition, range.startPosition))),
         filteredRanges.splice(index, 0, range))
       : ((filteredRanges = children.filter(child => RangeComparator.doesContain(child, range) || isNodeTypeOrControlStructure(language, child) || isStatementElement(language, child))),
         (index = filteredRanges.findIndex(child => RangeComparator.doesContain(child, range)))),
@@ -7867,7 +7862,7 @@ function adjustRange(document, ranges, range) {
     startOffset = Math.min(startOffset, endRange.startIndex)
     endOffset = Math.max(endOffset, endRange.endIndex)
   }
-  return new VscodeRange(document.positionAt(startOffset), document.positionAt(endOffset))
+  return new vscode.Range(document.positionAt(startOffset), document.positionAt(endOffset))
 }
 
 async function getFunctionReferences(service, document, range, timeout) {
@@ -7881,7 +7876,7 @@ async function getFunctionReferences(service, document, range, timeout) {
         await Promise.all(
           callExpressions.map(async expression => {
             let position = document.positionAt(expression.startIndex),
-              languageService = service.get(LanguageService)
+              languageService = service.get(BaseSymbolProvider)
             try {
               let implementations = await languageService.getImplementations(document.uri, position)
               return implementations.length ? implementations : await languageService.getDefinitions(document.uri, position)
@@ -7937,7 +7932,7 @@ async function getClassReferences(service, document, range, timeout) {
           newExpressions.map(async expression => {
             try {
               let position = document.positionAt(expression.startIndex),
-                languageService = service.get(LanguageService),
+                languageService = service.get(BaseSymbolProvider),
                 implementations = await languageService.getImplementations(document.uri, position)
               return implementations.length ? implementations : await languageService.getDefinitions(document.uri, position)
             } catch {
@@ -8101,7 +8096,7 @@ function isCodeBlock(text) {
 var analysisConfig = { analysisTimeoutMs: 100 }
 
 async function analyzeDocument(service, document, range) {
-  let timeout = service.get(extensionContext).extensionMode === VscodeExtensionMode.Test ? 0 : analysisConfig.analysisTimeoutMs,
+  let timeout = service.get(extensionContext).extensionMode === vscode.ExtensionMode.Test ? 0 : analysisConfig.analysisTimeoutMs,
     startTime = Date.now(),
     functionPositions = await getSortedFunctionPositions(service, document, timeout),
     elapsedTime = Date.now() - startTime,
@@ -8285,7 +8280,7 @@ var CodeBlock = class CodeBlock {
   toRange() {
     try {
       let lastLineIndex = this.lastLineIndex === -1 ? this.document.lineCount - 1 : this.lastLineIndex,
-        range = new VscodeRange(this.firstLineIndex, 0, lastLineIndex, this.document.lineAt(lastLineIndex).text.length)
+        range = new vscode.Range(this.firstLineIndex, 0, lastLineIndex, this.document.lineAt(lastLineIndex).text.length)
       if (this.document.validateRange(range) === range) return range
     } catch {
       return
@@ -8343,7 +8338,7 @@ var DocumentSelectionResolver = class {
     if (nodeToDocument) {
       let wholeRangeOffsetRange = DocumentSelectionResolver.toTreeSitterOffsetRange(context.wholeRange, context.document)
       DocumentSelectionResolver.sendNodeToDocumentTelemetry(service, selectionOffsetRange, wholeRangeOffsetRange, nodeToDocument, context.document.languageId, timeSpent)
-      let vscodeRange = new VscodeRange(
+      let vscodeRange = new vscode.Range(
         context.document.positionAt(nodeToDocument.nodeToDocument.startIndex),
         context.document.positionAt(nodeToDocument.nodeToDocument.endIndex)
       )
@@ -8409,7 +8404,6 @@ var FileFinder = class {
     return maxResults === 1 ? foundFiles[0] : foundFiles
   }
 }
-var BaseTabManager = class {}
 var patternMatcher = handleDefaultExports(patternMatcherModule())
 function isPathMatch(file, pattern) {
   return typeof pattern == 'string'
@@ -8616,26 +8610,26 @@ The active document is the source code the user is looking at right now.
 You can only give one reply for each conversation turn.
 `.trim()
 }
-async function generateAssistantMessage(t, e, r, n = { includeCodeGenerationRules: !0, includeCapabilities: !1 }) {
-  let i = `
-${n.roleplay ?? getAssistantIntroduction()}
+async function generateAssistantMessage(commandManager, commandContext, modelInfo, options = { includeCodeGenerationRules: !0, includeCapabilities: !1 }) {
+  let message = `
+${options.roleplay ?? getAssistantIntroduction()}
 ${getAssistantIdentity()}
 ${getAssistantExpertise()}
 `
   return (
-    n.roleplay ||
-      (i += `
-${(await getAssistantCapabilities(t, e, r)).trim()}
+    options.roleplay ||
+      (message += `
+${(await getAssistantCapabilities(commandManager, commandContext, modelInfo)).trim()}
 `),
-    (i += `
-${n.includeCodeGenerationRules ? getDevelopmentProcess() : ''}
+    (message += `
+${options.includeCodeGenerationRules ? getDevelopmentProcess() : ''}
 ${getFormattingGuidelines()}
-${getLocaleResponse(t)}
+${getLocaleResponse(commandManager)}
 `.trim()),
-    i
+message
   )
 }
-var supportedLocales = ['auto', 'en', 'fr', 'it', 'de', 'es', 'ru', 'zh-CN', 'zh-TW', 'ja', 'ko', 'cs', 'pt-br', 'tr', 'pl']
+var supportedLocales = ['auto', 'en', 'fr', 'it', 'de', 'es', 'ru', 'zh_CN', 'zh-TW', 'ja', 'ko', 'cs', 'pt-br', 'tr', 'pl']
 
 function getLocaleResponse(t) {
   let locale = t.get(ConfigManager).getConfig(settings.LocaleOverride)
@@ -9260,7 +9254,7 @@ function processCodeAndCells(workspaceService, config, context, codeBlockResult,
   maxTokenCount = maxTokenCount ?? (config.modelMaxTokenWindow * 4) / 3;
 
   let characterCounter = new CharacterCounter(maxTokenCount),
-    processedCodeBlock = handleCodeBlock(context.document, context.selection, codeBlockResult, new VscodeRange(0, 0, context.document.lineCount, 0), context.language, characterCounter);
+    processedCodeBlock = handleCodeBlock(context.document, context.selection, codeBlockResult, new vscode.Range(0, 0, context.document.lineCount, 0), context.language, characterCounter);
 
   // Process the cells in the notebook document that matches the context document
   return processNotebookCells(workspaceService.get(WorkspaceClass), context, processedCodeBlock, characterCounter);
@@ -9335,14 +9329,14 @@ function processCodeBlock(workspaceService, config, context, codeBlockResult, se
   maxTokenCount = maxTokenCount ?? (config.modelMaxTokenWindow * 4) / 3;
 
   let characterCounter = new CharacterCounter(maxTokenCount),
-    processedCodeBlock = handleCodeBlock(context.document, context.selection, codeBlockResult, new VscodeRange(0, 0, context.document.lineCount, 0), context.language, characterCounter);
+    processedCodeBlock = handleCodeBlock(context.document, context.selection, codeBlockResult, new vscode.Range(0, 0, context.document.lineCount, 0), context.language, characterCounter);
 
   // If the above part of the code block has no content or is complete, return the processed code block without outlines
   if (!(processedCodeBlock.above.hasContent && !processedCodeBlock.above.isComplete))
     return { language: processedCodeBlock.language, above: processedCodeBlock.above, range: processedCodeBlock.range, below: processedCodeBlock.below, outlineAbove: '', outlineBelow: '' };
 
   let outlineCharacterCounter = new CharacterCounter(maxTokenCount),
-    expandedSelectionRange = new VscodeRange(selectionRange.start.line, 0, selectionRange.end.line, context.document.lineAt(selectionRange.end.line).range.end.character),
+    expandedSelectionRange = new vscode.Range(selectionRange.start.line, 0, selectionRange.end.line, context.document.lineAt(selectionRange.end.line).range.end.character),
     expandedProcessedCodeBlock = handleCodeBlock(context.document, context.selection, codeBlockResult, expandedSelectionRange, context.language, outlineCharacterCounter),
     outlineAbove = '',
     outlineBelow = '';
@@ -9428,7 +9422,7 @@ function generateOutline({ document, functionBodies, rangeExpandedToFunctionWhol
   document.languageId === 'typescript' && (endStatement = ';');
 
   let isInRange = body => {
-    let bodyRange = new VscodeRange(document.positionAt(body.startIndex), document.positionAt(body.endIndex));
+    let bodyRange = new vscode.Range(document.positionAt(body.startIndex), document.positionAt(body.endIndex));
     return bodyRange.end.line < rangeExpandedToFunctionWholeLines.start.line
       ? rangeExpandedToFunctionWholeLines.start.line - bodyRange.start.line > 50
       : bodyRange.start.line > rangeExpandedToFunctionWholeLines.end.line
@@ -9559,7 +9553,7 @@ function processNotebookCells(notebookService, context, codeBlockResult, charact
 var TestFileContextResolver = class {
   constructor() {
     this.kind = 'tests/impl2test'
-    this._onDidFindCandidate = new VscodeEventEmitter()
+    this._onDidFindCandidate = new vscode.EventEmitter()
     this.onDidFindCandidate = this._onDidFindCandidate.event
     this.metaContextResolverInfo = { description: 'Information about existing or related files containing tests.' }
     this._decoder = new util.TextDecoder()
@@ -9570,7 +9564,7 @@ var TestFileContextResolver = class {
     if (!documentContext || isTestFile(documentContext.document)) return
 
     let fileSystemOperations = serviceProvider.get(BaseFileSystemOperations)
-    let testFileManager = new TestFileManager(serviceProvider.get(FileFinder), serviceProvider.get(BaseTabManager))
+    let testFileManager = new TestFileManager(serviceProvider.get(FileFinder), serviceProvider.get(TabManager))
     let maxTokenWindow = (request.endpoint.modelMaxTokenWindow * 4) / 3
 
     let readFileExcerpt = async (filePath, length = maxTokenWindow) => {
@@ -9581,7 +9575,7 @@ var TestFileContextResolver = class {
     let testFile = await testFileManager.findTestFileForSourceFile(documentContext.document, cancellationToken)
     if (testFile) {
       this._onDidFindCandidate.fire(testFile)
-      let markdownString = new VscodeMarkdownString()
+      let markdownString = new vscode.MarkdownString()
       markdownString.appendMarkdown(`\nExcerpt of the existing test file:\n`)
       markdownString.appendCodeblock(await readFileExcerpt(testFile), documentContext.document.languageId)
       markdownString.appendMarkdown(`\nBecause a test file exists:\n- Do not generate preambles, like imports, copyright headers etc.\n- Do generate code that can be appended to the existing test file.`)
@@ -9590,7 +9584,7 @@ var TestFileContextResolver = class {
 
     let anyTestFile = await testFileManager.findAnyTestFileForSourceFile(documentContext.document, cancellationToken)
     if (!anyTestFile) return
-    let markdownString = new VscodeMarkdownString(`This is sample test file:\n`)
+    let markdownString = new vscode.MarkdownString(`This is sample test file:\n`)
     markdownString.appendCodeblock(await readFileExcerpt(anyTestFile), documentContext.document.languageId)
     return { kind: this.kind, userMessages: [markdownString.value], references: [new Anchor(anyTestFile)] }
   }
@@ -9607,7 +9601,7 @@ var TestToImplContextResolver = class {
     if (!documentContext || !isTestFile(documentContext.document)) return
 
     let fileSystemOperations = serviceProvider.get(BaseFileSystemOperations)
-    let testFileManager = new TestFileManager(serviceProvider.get(FileFinder), serviceProvider.get(BaseTabManager))
+    let testFileManager = new TestFileManager(serviceProvider.get(FileFinder), serviceProvider.get(TabManager))
     let maxTokenWindow = (request.endpoint.modelMaxTokenWindow * 4) / 3
 
     let createFileExcerpt = (filePath, fileContent, length = maxTokenWindow) => {
@@ -9630,12 +9624,12 @@ var TestToImplContextResolver = class {
       let { outlineAbove, outlineBelow } = createOutlines(fileContent, functionBodies, { startOffset: fileContent.length, endOffset: fileContent.length }, '')
       let outline = `${outlineAbove}\n${outlineBelow}`
 
-      markdownString = new VscodeMarkdownString(`\nThis is an excerpt of the file that this test is covering:\n`)
+      markdownString = new vscode.MarkdownString(`\nThis is an excerpt of the file that this test is covering:\n`)
       markdownString.appendCodeblock(createFileExcerpt(implFile, outline), documentContext.document.languageId)
     } catch {}
 
     if (!markdownString) {
-      markdownString = new VscodeMarkdownString(`\nThis is an excerpt of the file that this test is covering:\n`)
+      markdownString = new vscode.MarkdownString(`\nThis is an excerpt of the file that this test is covering:\n`)
       markdownString.appendCodeblock(await readFileContent(implFile), documentContext.document.languageId)
     }
 
@@ -9653,7 +9647,7 @@ var ActiveEditorContextResolver = class {
   }
 
   async resolveContext(serviceProvider, request) {
-    let activeEditor = serviceProvider.get(BaseTabManager).activeTextEditor
+    let activeEditor = serviceProvider.get(TabManager).activeTextEditor
     let visibleRange = activeEditor?.visibleRanges[0]
 
     if (visibleRange) {
@@ -9698,7 +9692,7 @@ var CurrentSelectionContextResolver = class {
   }
 
   async resolveContext(serviceProvider, request) {
-    let currentSelection = CurrentSelectionContextResolver.getCurrentSelection(serviceProvider.get(BaseTabManager))
+    let currentSelection = CurrentSelectionContextResolver.getCurrentSelection(serviceProvider.get(TabManager))
     if (currentSelection) {
       let formattedSelection = CurrentSelectionContextResolver.formatSelection(currentSelection)
       let usedContext = [{ uri: currentSelection.activeDocument.uri, version: currentSelection.activeDocument.version, ranges: [currentSelection.range] }]
@@ -9709,7 +9703,7 @@ var CurrentSelectionContextResolver = class {
           `Active selection:\n${formattedSelection}`,
         ],
         usedContext: usedContext,
-        references: [new Anchor(new VscodeLocation(currentSelection.activeDocument.uri, currentSelection.range))],
+        references: [new Anchor(new vscode.Location(currentSelection.activeDocument.uri, currentSelection.range))],
       }
     } else {
       return new ActiveEditorContextResolver().resolveContext(serviceProvider, request)
@@ -9745,11 +9739,11 @@ var CurrentSelectionImplementationsResolver = class {
   }
 
   async resolveContext(serviceProvider, request, thirdParam, fourthParam) {
-    let currentSelection = CurrentSelectionContextResolver.getCurrentSelection(serviceProvider.get(BaseTabManager))
+    let currentSelection = CurrentSelectionContextResolver.getCurrentSelection(serviceProvider.get(TabManager))
     if (!currentSelection) return
 
     let activeDocument = currentSelection.activeDocument
-    let delay = serviceProvider.get(extensionContext).extensionMode === VscodeExtensionMode.Test ? 0 : 200
+    let delay = serviceProvider.get(extensionContext).extensionMode === vscode.ExtensionMode.Test ? 0 : 200
     let userMessages = []
     let references = []
     let usedContext = []
@@ -9782,13 +9776,13 @@ function formatImplementations(document, implementations) {
 
   for (let impl of implementations) {
     let uri = impl.uri ?? document.uri
-    let range = impl.range ?? new VscodeRange(document.positionAt(impl.startIndex), document.positionAt(impl.endIndex))
+    let range = impl.range ?? new vscode.Range(document.positionAt(impl.startIndex), document.positionAt(impl.endIndex))
     let key = `${uri.toString()}-${range.start.line}-${range.start.character}-${range.end.line}-${range.end.character}`
 
     if (seenSet.has(key)) continue
 
     seenSet.add(key)
-    references.push(new Anchor(new VscodeLocation(uri, range)))
+    references.push(new Anchor(new vscode.Location(uri, range)))
     text.push(impl.text)
 
     let [version, ranges] = contextMap.get(uri) ?? [impl.version ?? document.version, []]
@@ -9803,7 +9797,7 @@ function formatImplementations(document, implementations) {
   }
 }
 
-var bY = ContextResolverRegistry.register(new CurrentSelectionImplementationsResolver())
+var currentSelectionImplementationsResolver = ContextResolverRegistry.register(new CurrentSelectionImplementationsResolver())
 var DisposableClass = class extends Disposable {}
 var DebugConsoleOutputResolver = class {
   constructor() {
@@ -9853,7 +9847,7 @@ function unionRanges(ranges) {
 }
 
 function isErrorDiagnostic(diagnostic) {
-  return diagnostic.severity === VscodeDiagnosticSeverity.Error
+  return diagnostic.severity === vscode.DiagnosticSeverity.Error
 }
 
 var IY = handleDefaultExports(CY())
@@ -9867,7 +9861,7 @@ ${content.trim()}
 ${backticks}`
 }
 
-function extractCodeBlocks(content) {
+function extractCodeBlocks1(content) {
   if (!content) return []
   let tokens = IY.marked.lexer(content)
   return flattenTokens(tokens).filter(token => token.type === 'code')
@@ -10037,7 +10031,7 @@ function convertRangeToLines(range) {
 }
 
 function convertLinesToRange(lines) {
-  return new VscodeRange(lines.startPosition.row, lines.startPosition.column, lines.endPosition.row, lines.endPosition.column);
+  return new vscode.Range(lines.startPosition.row, lines.startPosition.column, lines.endPosition.row, lines.endPosition.column);
 }
 
 var DiagnosticResolver = class {
@@ -10077,7 +10071,7 @@ var DiagnosticResolver = class {
       for (let i = 0; i < diagnostics.length; i++) {
         prompts.push(`Problem ${i + 1}:`);
         let diagnostic = diagnostics[i],
-          code = document.getText(new VscodeRange(diagnostic.range.start.line, 0, diagnostic.range.end.line + 1, 0)).trim();
+          code = document.getText(new vscode.Range(diagnostic.range.start.line, 0, diagnostic.range.end.line + 1, 0)).trim();
         if (code.length > 0 && code.length < 200) {
           prompts.push('This code', wrapCodeWithBackticks('', code), 'has the problem reported:');
           prompts.push(wrapCodeWithBackticks('', `${diagnostic.message}`));
@@ -10533,7 +10527,7 @@ var GitMetadataContextResolver = class {
     if (!repositories || !workspaceFolders) return
 
     if (workspaceFolders.length > 1) {
-      let documentUri = request.documentContext?.document.uri ?? serviceProvider.get(BaseTabManager).activeTextEditor?.document.uri
+      let documentUri = request.documentContext?.document.uri ?? serviceProvider.get(TabManager).activeTextEditor?.document.uri
       if (documentUri) {
         let workspaceFolder = workspace.getWorkspaceFolder(documentUri)
         if (workspaceFolder) {
@@ -10667,7 +10661,7 @@ var TerminalShellTypeResolver = class {
   }
 };
 var terminalShellTypeResolver = ContextResolverRegistry.register(new TerminalShellTypeResolver())
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var util = handleDefaultExports(require('util'))
 var ExperimentationServiceIdentifier = createServiceIdentifier('IExperimentationService'),
   ExperimentationService = class {
@@ -10695,7 +10689,7 @@ var EnvironmentFlags = class Flags {
   }
   static fromEnvironment(environment) {
     return new Flags({
-      debug: isDebugMode(process.argv, process.env),
+      debug: isDebugMode1(process.argv, process.env),
       telemetryLogging: isTelemetryLogging(process.env),
       testMode: environment,
       recordInput: isRecordMode(process.argv, process.env),
@@ -10705,7 +10699,7 @@ var EnvironmentFlags = class Flags {
 function isTestMode(context) {
   return context.get(EnvironmentFlags).flags.testMode
 }
-function isDebugMode(args, env) {
+function isDebugMode1(args, env) {
   return args.includes('--debug') || isFlagEnabled(env, 'GITHUB_COPILOT_DEBUG')
 }
 function isTelemetryLogging(env) {
@@ -10782,7 +10776,7 @@ var EndpointManager = class {
   }
   async shouldDisableSnippy() {
     let token = await this.accessor.get(BaseTokenHandler).getCopilotToken(this.accessor),
-      isDevelopmentMode = this.accessor.get(extensionContext).extensionMode === VscodeExtensionMode.Development
+      isDevelopmentMode = this.accessor.get(extensionContext).extensionMode === vscode.ExtensionMode.Development
     return token.isInternal && isDevelopmentMode
   }
   async getEmbeddingsEndpointInfo() {
@@ -10845,9 +10839,9 @@ var ChatService = class {
     }
   }
 }
-var requestLight = handleDefaultExports(requestLight()),
+var l10n = handleDefaultExports(l10n()),
 path = handleDefaultExports(require('path'))
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var MissingRepoOrgError = class extends Error {
   constructor() {
     super(...arguments)
@@ -11001,11 +10995,11 @@ var SearchClient = class {
     }
   }
 var debounceDelay = 250
-function toVscodePosition(position) {
-  return new VscodePosition(position.row, position.column)
+function tovscode.Position(position) {
+  return new vscode.Position(position.row, position.column)
 }
-function toVscodeRange(range) {
-  return new VscodeRange(toVscodePosition(range.startPosition), toVscodePosition(range.endPosition))
+function tovscode.Range(range) {
+  return new vscode.Range(tovscode.Position(range.startPosition), tovscode.Position(range.endPosition))
 }
 function trimTrailingSpaces(text) {
   return text.replace(/\s+$/, '')
@@ -11019,7 +11013,7 @@ var TextChunker = class {
   }
   genericWholeFileChunking({ text, maxTokenLength = debounceDelay, removeEmptyLines = true }) {
     let lines = text.split(/\n/),
-      startPos = new VscodePosition(0, 0),
+      startPos = new vscode.Position(0, 0),
       chunks = [],
       currentLines = [],
       currentTokenCount = 0,
@@ -11043,15 +11037,15 @@ var TextChunker = class {
         )
         if (chunkLines.length === 1) chunkLines[0] = chunkLines[0]?.trim()
         else if (chunkLines.length === 0) return
-        let endPos = new VscodePosition(lineNum, chunkLines[chunkLines.length - 1].length),
-          range = new VscodeRange(startPos, endPos)
+        let endPos = new vscode.Position(lineNum, chunkLines[chunkLines.length - 1].length),
+          range = new vscode.Range(startPos, endPos)
         chunks.push({ text: chunkLines.reduce((acc, line) => acc + line, ''), range: range }),
           (currentLines = []),
           (currentTokenCount = 0),
-          (startPos = new VscodePosition(endPos.line + 1, 0)),
+          (startPos = new vscode.Position(endPos.line + 1, 0)),
           (commonLeadingWhitespace = void 0)
       },
-      fullRange = new VscodeRange(0, 0, lines.length - 1, lines[lines.length - 1].length)
+      fullRange = new vscode.Range(0, 0, lines.length - 1, lines[lines.length - 1].length)
     this._processLinesIntoChunks(lines, fullRange, maxTokenLength, '', createChunk, updateCommonLeadingWhitespace, addLine, getTokenCount, () => commonLeadingWhitespace, removeEmptyLines)
     if (currentLines) {
       if (commonLeadingWhitespace === void 0) updateCommonLeadingWhitespace()
@@ -11134,15 +11128,15 @@ var TextChunker = class {
           currentLines = [], currentTokenCount = 0
           return
         }
-        let endPos = new VscodePosition(lineNum, chunkLines[chunkLines.length - 1].length),
-          range = new VscodeRange(startPos, endPos)
+        let endPos = new vscode.Position(lineNum, chunkLines[chunkLines.length - 1].length),
+          range = new vscode.Range(startPos, endPos)
         chunks.push({ text: trimTrailingSpaces(chunkLines.reduce((acc, line) => acc + line, '')), range: range }),
           (currentLines = []),
           (currentTokenCount = 0),
           chunkLines[chunkLines.length - 1].endsWith(`
 `)
-            ? (startPos = new VscodePosition(endPos.line + 1, 0))
-            : (startPos = new VscodePosition(endPos.line, chunkLines[chunkLines.length - 1].length))
+            ? (startPos = new vscode.Position(endPos.line + 1, 0))
+            : (startPos = new vscode.Position(endPos.line, chunkLines[chunkLines.length - 1].length))
       }
     for (let i = 0; i < text.length; i++) {
       let lineRange = text[i]
@@ -11241,9 +11235,9 @@ var TextParser = class {
         '',
         '',
         e,
-        { text: n.syntaxTreeRoot.text, range: toVscodeRange(n.syntaxTreeRoot) },
+        { text: n.syntaxTreeRoot.text, range: tovscode.Range(n.syntaxTreeRoot) },
         s,
-        new VscodeRange(0, 0, n.syntaxTreeRoot.range.endPosition.row, n.syntaxTreeRoot.range.endPosition.column),
+        new vscode.Range(0, 0, n.syntaxTreeRoot.range.endPosition.row, n.syntaxTreeRoot.range.endPosition.column),
         ''
       )
     return a.length === 1 && (a[0] = { ...a[0], isFullFile: !0 }), o.push(...a), o
@@ -11286,11 +11280,11 @@ var TextParser = class {
       l = d => {
         let f = d.line - o.line,
           m = d.character
-        return o.line === d.line && (m = d.character - o.character), new VscodePosition(f, m)
+        return o.line === d.line && (m = d.character - o.character), new vscode.Position(f, m)
       },
       c = d => {
         let f = d.character === i[d.line - o.line].length - 1
-        return { newPosition: new VscodePosition(d.line, d.character + 1), isNewLine: f }
+        return { newPosition: new vscode.Position(d.line, d.character + 1), isNewLine: f }
       },
       u = (d, f) => {
         let m = [],
@@ -11327,7 +11321,7 @@ var TextParser = class {
           m.push(y)
         }
         let _ = m.join('')
-        s.push({ text: _.replace(/(^\s+\n)/, ''), range: new VscodeRange(d, f) })
+        s.push({ text: _.replace(/(^\s+\n)/, ''), range: new vscode.Range(d, f) })
       },
       p = d => {
         s.push({
@@ -11390,7 +11384,7 @@ ${o}${this._elipsisPlaceholder}`),
                 })
               )
             if (s.text.trim().length !== 0)
-              return { range: new VscodeRange(a === 0 ? i.start : s.range.start, s.range.end), text: l + s.text + c }
+              return { range: new vscode.Range(a === 0 ? i.start : s.range.start, s.range.end), text: l + s.text + c }
           })
         ).flat()
   }
@@ -11410,7 +11404,7 @@ var SemanticTextParser = class extends TextParser {
           mainBlock = info.mainBlock,
           comments = info.detailBlocks.comments,
           body = info.detailBlocks.body,
-          innerLineRangeText = this._getInnerLineRangeText({ text: body.text, range: toVscodeRange(body) }),
+          innerLineRangeText = this._getInnerLineRangeText({ text: body.text, range: tovscode.Range(body) }),
           bodyStartIndex = body.startIndex - mainBlock.startIndex + innerLineRangeText.prefix.length,
           newIndent = this.findNewIndent(indent, mainBlock, body),
           commentText = ''
@@ -11422,9 +11416,9 @@ var SemanticTextParser = class extends TextParser {
 `
         let mainText = indent + mainBlock.text.substring(0, bodyStartIndex),
           summaryText = commentText + mainText,
-          mainRange = toVscodeRange(mainBlock)
+          mainRange = tovscode.Range(mainBlock)
         if (comments.length > 0) {
-          mainRange = mainRange.with(toVscodePosition(comments[0].range.startPosition))
+          mainRange = mainRange.with(tovscode.Position(comments[0].range.startPosition))
         }
         let tokenizer = this.accessor.get(Tokenizer),
           maxTokens = maxLineCount * maxTokenCount,
@@ -11451,7 +11445,7 @@ var SemanticTextParser = class extends TextParser {
           ),
           remainingTokens = maxTokenCount - totalTokenCount,
           summary = createSummary(node.children, innerLineRangeText.body, remainingTokens, indent + newIndent)
-        mainRange = new VscodeRange(mainRange.start, toVscodePosition(mainBlock.range.endPosition));
+        mainRange = new vscode.Range(mainRange.start, tovscode.Position(mainBlock.range.endPosition));
         summaries.push(...this._createSummary(trimmedSummaryText, suffix, summary.content.text, mainRange, indent + newIndent));
         let trimmedCommentText = trimTrailingSpaces(commentText + indent + mainBlock.text.substring(0, body.startIndex - mainBlock.startIndex));
         outlines.push({ summary: trimmedCommentText + ' ' + this._summaryPlaceHolder, range: mainRange });
@@ -11472,11 +11466,11 @@ var SemanticTextParser = class extends TextParser {
       prefixLastLineLength = prefix.match(/\n(.*)$/g)?.length ?? 0,
       textLineCount = (text.match(/\n/g) || []).length,
       textLastLineLength = text.match(/\n(.*)$/g)?.length ?? 0,
-      start = new VscodePosition(rangeInfo.range.start.line + prefixLineCount, prefixLineCount === 0 ? rangeInfo.range.start.character + prefixLastLineLength : prefixLastLineLength),
-      end = new VscodePosition(rangeInfo.range.start.line + textLineCount, textLineCount === 0 ? rangeInfo.range.start.character + textLastLineLength : textLastLineLength),
+      start = new vscode.Position(rangeInfo.range.start.line + prefixLineCount, prefixLineCount === 0 ? rangeInfo.range.start.character + prefixLastLineLength : prefixLastLineLength),
+      end = new vscode.Position(rangeInfo.range.start.line + textLineCount, textLineCount === 0 ? rangeInfo.range.start.character + textLastLineLength : textLastLineLength),
       trimmedPrefix = prefix.replace(/\{[^\S\r\n]*/g, '{'),
       trimmedSuffix = suffix.replace(/\}[^\S\r\n]*/g, '}')
-    return { prefix: trimmedPrefix, body: { text: text, range: new VscodeRange(start, end) }, suffix: trimmedSuffix }
+    return { prefix: trimmedPrefix, body: { text: text, range: new vscode.Range(start, end) }, suffix: trimmedSuffix }
   }
 }
 var MdTextParser = class {
@@ -11499,7 +11493,7 @@ var MdTextParser = class {
     let lines = this._text.split(`
 `),
       currentLines = [],
-      startPosition = new VscodePosition(0, 0),
+      startPosition = new vscode.Position(0, 0),
       lineRanges = [];
     for (let i = 0; i < lines.length; i++)
       if (lines[i].trim().length === 0) {
@@ -11507,10 +11501,10 @@ var MdTextParser = class {
           lineRanges.push({
             text: currentLines.join(`
 `),
-            range: new VscodeRange(startPosition, new VscodePosition(i, lines[i].length)),
+            range: new vscode.Range(startPosition, new vscode.Position(i, lines[i].length)),
           });
           currentLines.length = 0;
-          startPosition = new VscodePosition(i + 1, 0);
+          startPosition = new vscode.Position(i + 1, 0);
         }
         continue;
       } else currentLines.push(lines[i]);
@@ -11518,7 +11512,7 @@ var MdTextParser = class {
       lineRanges.push({
         text: currentLines.join(`
 `),
-        range: new VscodeRange(startPosition, new VscodePosition(lines.length - 1, lines[lines.length - 1].length - 1)),
+        range: new vscode.Range(startPosition, new vscode.Position(lines.length - 1, lines[lines.length - 1].length - 1)),
       });
     }
     return lineRanges;
@@ -11550,8 +11544,8 @@ var PythonSemanticTextParser = class extends TextParser {
             mainBlockText +
             `
 `,
-          range = toVscodeRange(mainBlock);
-        decorator && (range = range.with(toVscodePosition(decorator.range.startPosition)));
+          range = tovscode.Range(mainBlock);
+        decorator && (range = range.with(tovscode.Position(decorator.range.startPosition)));
         let tokenizer = this.accessor.get(Tokenizer),
           maxTokenLength = maxLineCount * maxTokenCount,
           trimmedText = combinedText.replace(
@@ -11569,7 +11563,7 @@ var PythonSemanticTextParser = class extends TextParser {
             tokenLength = 0;
           }
         }
-        range = new VscodeRange(range.start, toVscodePosition(mainBlock.range.endPosition));
+        range = new vscode.Range(range.start, tovscode.Position(mainBlock.range.endPosition));
         outlines.push({
           summary: docstring
             ? trimmedSpaces +
@@ -11579,7 +11573,7 @@ ${newIndent}` +
             : trimmedSpaces + ' ' + this._summaryPlaceHolder,
           range: range,
         });
-        let bodyInfo = { text: body.text, range: toVscodeRange(body) },
+        let bodyInfo = { text: body.text, range: tovscode.Range(body) },
           summary = createSummary(node.children, bodyInfo, maxTokenCount - tokenLength, indent + newIndent),
           mainBlockWithoutBody =
             indent +
@@ -11839,7 +11833,7 @@ var TextChunker1 = class {
     this._uri = uri;
     this._accessor = accessor;
     this._isDisposed = false;
-    this._disposedCts = new VscodeCancellationTokenSource();
+    this._disposedCts = new vscode.CancellationTokenSource();
   }
   dispose() {
     this._isDisposed = true;
@@ -12260,7 +12254,7 @@ var CodeSearchChunkSearch = class extends SemanticChunker {
       .map(searchResult => {
         let workspaceChunk = this._workspaceChunkIndex.get(Uri.joinPath(workspaceFolder, searchResult.path))
         if (workspaceChunk)
-          return { file: workspaceChunk.uri, score: searchResult.score, text: searchResult.contents, range: new VscodeRange(searchResult.range.start, 0, searchResult.range.end + 1, 0) }
+          return { file: workspaceChunk.uri, score: searchResult.score, text: searchResult.contents, range: new vscode.Range(searchResult.range.start, 0, searchResult.range.end + 1, 0) }
       })
       .filter(searchResult => !!searchResult)
   }
@@ -12408,7 +12402,7 @@ var tfidfWorkerPath = path.default.join(__dirname, 'tfidfWorker.js'),
 function convertToSerializableObjects(object) {
   return deepMap(object, element => {
     if (Uri.isUri(element)) return { $mid: 'uri', ...element }
-    if (element instanceof VscodeRange)
+    if (element instanceof vscode.Range)
       return {
         $mid: 'range',
         start: { line: element.start.line, character: element.start.character },
@@ -12418,7 +12412,7 @@ function convertToSerializableObjects(object) {
 }
 function convertToVscodeObjects(object) {
   return deepMap(object, element => {
-    if (element.$mid === 'range') return new VscodeRange(element.start.line, element.start.character, element.end.line, element.end.character)
+    if (element.$mid === 'range') return new vscode.Range(element.start.line, element.start.character, element.end.line, element.end.character)
     if (element.$mid === 'uri') return Uri.revive(element)
   })
 }
@@ -12510,7 +12504,7 @@ var WorkspaceChunkSearch = class {
             await this._accessor
               .get(BaseTokenHandler)
               .getPermissiveGitHubToken({
-                forceNewSession: { detail: requestLight.t('More permissions are required to search private repositories') },
+                forceNewSession: { detail: l10n.t('More permissions are required to search private repositories') },
               })
           ) {
             let additionalResults = await strategy.searchFileChunks(fileChunks, searchParams, cancellationToken)
@@ -12664,11 +12658,11 @@ var WorkspaceResolver = class {
     let dataRetriever = context.get(DataRetriever)
     this.logger || (this.logger = context.get(LoggerManager).getLogger('workspaceResolver')),
       this.logger.debug('Collecting workspace structure...'),
-      progress.report({ message: requestLight.t('Collecting workspace structure') })
+      progress.report({ message: l10n.t('Collecting workspace structure') })
     let workspaceStructure = await getWorkspaceStructure(context, 1e3, cancellationToken)
     if (cancellationToken.isCancellationRequested) return
     this.logger.debug('Asking the model to update the user question and provide queries...'),
-      progress.report({ message: requestLight.t('Deciding which workspace information to collect') })
+      progress.report({ message: l10n.t('Deciding which workspace information to collect') })
     let modelResponse = await dataRetriever.fetchOne(
       filterTruthyValues([
         ...this.getHistory(request.conversation),
@@ -12685,11 +12679,11 @@ var WorkspaceResolver = class {
     )
     if (cancellationToken.isCancellationRequested) return
     if (modelResponse.type !== 'success')
-      throw new Error(requestLight.t('Encountered an error while deciding what workspace information to collect: {0}', modelResponse.type))
+      throw new Error(l10n.t('Encountered an error while deciding what workspace information to collect: {0}', modelResponse.type))
     let parsedResponse = this.parseMetaPromptResponse(message, modelResponse.value)
     return (
       this.logger.debug('Running all tools...'),
-      progress.report({ message: requestLight.t('Collecting workspace info') }),
+      progress.report({ message: l10n.t('Collecting workspace info') }),
       this.runTools(context, parsedResponse, cancellationToken)
     )
   }
@@ -12878,7 +12872,7 @@ var SymbolResolver = new (class {
               return false
           return true
         })
-        .map(chunk => new Anchor(chunk.isFullFile ? chunk.file : new VscodeLocation(chunk.file, chunk.range)))
+        .map(chunk => new Anchor(chunk.isFullFile ? chunk.file : new vscode.Location(chunk.file, chunk.range)))
       return {
         kind: query.kind,
         userMessages: [
@@ -12930,7 +12924,7 @@ var TerminalWorkspaceResolver = class {
     let dataRetriever = context.get(DataRetriever)
     this.logger || (this.logger = context.get(LoggerManager).getLogger('workspaceResolver')),
       this.logger.debug('Determining whether workspace info is needed...'),
-      progress.report({ message: requestLight.t('Determining whether to fetch info on the workspace') })
+      progress.report({ message: l10n.t('Determining whether to fetch info on the workspace') })
     let modelResponse = await dataRetriever.fetchOne(
       filterTruthyValues([
         { role: 'system', content: workspaceKnowledgeRules },
@@ -12946,7 +12940,7 @@ var TerminalWorkspaceResolver = class {
     if (!cancellationToken.isCancellationRequested) {
       if (modelResponse.type !== 'success')
         throw new Error(
-          requestLight.t('Encountered an error while deciding what workspace information to collect: {0}', modelResponse.type)
+          l10n.t('Encountered an error while deciding what workspace information to collect: {0}', modelResponse.type)
         )
       return modelResponse.value.trim() !== '0' ? workspaceResolver.resolveContext(context, request, cancellationToken, progress) : { kind: this.kind, userMessages: [] }
     }
@@ -13938,7 +13932,7 @@ class WorkspaceLabelCollector {
   }
 
   async addLabelIfApplicable(workspace, folder, indicator, labels) {
-    let path = VscodeUri.joinPath(folder, indicator);
+    let path = vscode.Uri.joinPath(folder, indicator);
     try {
       await workspace.get(BaseFileSystemOperations).stat(path);
       labels.forEach(label => this._labels.push(label));
@@ -14029,7 +14023,7 @@ var Reporter = class {
   async reportInline(e, r, n) {}
   async reportChat(e) {}
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 class TextApplier {
   constructor(deltaApplier) {
     this.deltaApplier = deltaApplier;
@@ -14066,7 +14060,7 @@ class AsyncIterableTextApplier extends TextApplier {
     this._source.resolve();
   }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 class TextDiff {
   constructor(originalStart, originalLength, modifiedStart, modifiedLength) {
     this.originalStart = originalStart;
@@ -14579,7 +14573,7 @@ var TextEditGroup = class {
       this.lines.length > 0
         ? this.lines.join('\n') + '\n'
         : '';
-    return VscodeTextEdit.replace(new VscodeRange(this.firstLineIndex, 0, this.endLineIndex, 0), text);
+    return vscode.TextEdit.replace(new vscode.Range(this.firstLineIndex, 0, this.endLineIndex, 0), text);
   }
 },
 TextUtils;
@@ -15002,8 +14996,8 @@ var ChatMessageProcessor = class {
     this.maxTokenTestOverride = maxTokenTestOverride;
   }
 
-  async toChatMessages(chatSession, systemContent, tokenLimit, isContextMerged = false) {
-    let maxTokens = await this.computeMaxRequestTokens(tokenLimit),
+  async toChatMessages(chatSession, systemContent, modelParams, mergeContext = false) {
+    let maxTokens = await this.computeMaxRequestTokens(modelParams),
       successfulTurns = chatSession.turns.filter(turn => turn.status === 'success' || turn.status === 'in-progress'),
       messages = [{ role: 'system', content: systemContent }],
       totalTokenCount = calculateTokenLength(this.accessor, messages),
@@ -15041,7 +15035,7 @@ var ChatMessageProcessor = class {
       } else break;
     }
 
-    if (isContextMerged) {
+    if (mergeContext) {
       let lastMessage = messages[messages.length - 1];
       for (let i = messages.length - 2; i >= 0; i--) {
         let currentMessage = messages[i];
@@ -15155,6 +15149,8 @@ ${this.options.systemPromptOptions?.examples ? 'Examples:' : ''}
 ${this.options.systemPromptOptions?.examples ?? ''}
 `.trim();
   }
+
+  
   createInlineChatSystemMessage(rules) {
     return `
 ${this.options.systemPromptOptions?.roleplay ?? getAssistantIntroduction()}
@@ -15181,7 +15177,7 @@ When dealing with Jupyter Notebook, cells below the current cell can be executed
 When dealing with Jupyter Notebook, do not generate CELL INDEX in the code blocks in your answer, it is only used to help you understand the context.
 `.trim()
 }
-var StreamProcessor = class {
+var StreamProcessor1 = class {
   constructor(document, language, selection, defaultEditStrategy) {
     this.document = document
     this.language = language
@@ -15367,7 +15363,7 @@ class CodeEditor {
   }
   replaceLine(index, lineContent) {
     this.lines[index] = new CodeBlock(lineContent.adjustedContent, this.indentStyle);
-    this.progress.report({ edits: [new VscodeTextEdit(new VscodeRange(index, 0, index, 1e3), lineContent.adjustedContent)] });
+    this.progress.report({ edits: [new vscode.TextEdit(new vscode.Range(index, 0, index, 1e3), lineContent.adjustedContent)] });
     this._didEdits = true;
     this._didReplaceEdits = true;
     return index + 1;
@@ -15377,7 +15373,7 @@ class CodeEditor {
       return this.replaceLine(startIndex, lineContent);
     } else {
       this.lines.splice(startIndex, endIndex - startIndex + 1, new CodeBlock(lineContent.adjustedContent, this.indentStyle));
-      this.progress.report({ edits: [new Zs(new VscodeRange(startIndex, 0, endIndex, 1e3), lineContent.adjustedContent)] });
+      this.progress.report({ edits: [new Zs(new vscode.Range(startIndex, 0, endIndex, 1e3), lineContent.adjustedContent)] });
       this._didEdits = true;
       this._didReplaceEdits = true;
       return startIndex + 1;
@@ -15387,8 +15383,8 @@ class CodeEditor {
     this.lines.push(new CodeBlock(lineContent.adjustedContent, this.indentStyle));
     this.progress.report({
       edits: [
-        new VscodeTextEdit(
-          new VscodeRange(this.lines.length - 1, 1e3, this.lines.length - 1, 1e3),
+        new vscode.TextEdit(
+          new vscode.Range(this.lines.length - 1, 1e3, this.lines.length - 1, 1e3),
           '\n' + lineContent.adjustedContent
         ),
       ],
@@ -15400,8 +15396,8 @@ class CodeEditor {
     this.lines.splice(index + 1, 0, new CodeBlock(lineContent.adjustedContent, this.indentStyle));
     this.progress.report({
       edits: [
-        new VscodeTextEdit(
-          new VscodeRange(index, 1e3, index, 1e3),
+        new vscode.TextEdit(
+          new vscode.Range(index, 1e3, index, 1e3),
           '\n' + lineContent.adjustedContent
         ),
       ],
@@ -15413,8 +15409,8 @@ class CodeEditor {
     this.lines.splice(index, 0, new CodeBlock(lineContent.adjustedContent, this.indentStyle));
     this.progress.report({
       edits: [
-        new VscodeTextEdit(
-          new VscodeRange(index, 0, index, 0),
+        new vscode.TextEdit(
+          new vscode.Range(index, 0, index, 0),
           lineContent.adjustedContent + '\n'
         ),
       ],
@@ -15424,7 +15420,7 @@ class CodeEditor {
   }
   deleteLines(startIndex, endIndex) {
     this.lines.splice(startIndex, endIndex - startIndex + 1);
-    this.progress.report({ edits: [new VscodeTextEdit(new VscodeRange(startIndex, 0, endIndex + 1, 0), '')] });
+    this.progress.report({ edits: [new vscode.TextEdit(new vscode.Range(startIndex, 0, endIndex + 1, 0), '')] });
     this._didEdits = true;
     this._didReplaceEdits = true;
     return startIndex + 1;
@@ -15635,26 +15631,26 @@ class ProgressMessageGenerator {
   static {
     this._progressMessages = {
       0: [
-        requestLight.t("Fetching response, it won't be long now."),
-        requestLight.t('Working hard to get your response...'),
-        requestLight.t('Request is being processed, sit tight!'),
-        requestLight.t('Response is being prepared, please be patient.'),
+        l10n.t("Fetching response, it won't be long now."),
+        l10n.t('Working hard to get your response...'),
+        l10n.t('Request is being processed, sit tight!'),
+        l10n.t('Response is being prepared, please be patient.'),
       ],
       1: [
-        requestLight.t('Data is on its way, please wait a moment.'),
-        requestLight.t('Request is being processed, sit tight!'),
-        requestLight.t('Response is being prepared, please be patient.'),
+        l10n.t('Data is on its way, please wait a moment.'),
+        l10n.t('Request is being processed, sit tight!'),
+        l10n.t('Response is being prepared, please be patient.'),
       ],
       2: [
-        requestLight.t('Data is on its way, please wait a moment.'),
-        requestLight.t('Source code arriving...'),
-        requestLight.t("Hold on tight, we're almost there!"),
-        requestLight.t('Response is being prepared, please be patient.'),
-        requestLight.t('Code chunks incoming...'),
-        requestLight.t('Receiving code, please wait...'),
-        requestLight.t('Code is being processed, please wait...'),
+        l10n.t('Data is on its way, please wait a moment.'),
+        l10n.t('Source code arriving...'),
+        l10n.t("Hold on tight, we're almost there!"),
+        l10n.t('Response is being prepared, please be patient.'),
+        l10n.t('Code chunks incoming...'),
+        l10n.t('Receiving code, please wait...'),
+        l10n.t('Code is being processed, please wait...'),
       ],
-      3: [requestLight.t('Almost done, just a few more seconds...'), requestLight.t('Processing response, please wait...')],
+      3: [l10n.t('Almost done, just a few more seconds...'), l10n.t('Processing response, please wait...')],
     }
   }
   next(progressType) {
@@ -15738,7 +15734,7 @@ class CodeReplyInterpreter extends ProgressReporter {
     return createInlineEdit(processedText, expandedRange)
   }
 }
-class StreamProcessor {
+class StreamProcessor2 {
   constructor(progress) {
     this._progress = progress
     this._responseStream = new DeferredAsyncIterable()
@@ -15748,7 +15744,7 @@ class StreamProcessor {
     this._progressMessages = new ProgressMessageGenerator()
   }
   static createFactory() {
-    return progress => new StreamProcessor(progress)
+    return progress => new StreamProcessor2(progress)
   }
   _reportProgress(progressType) {
     let message = this._progressMessages.next(progressType)
@@ -15775,6 +15771,7 @@ class StreamProcessor {
     return false
   }
 }
+
 function applyTextEdits(text, edits) {
   let offsetCalculator = new OffsetCalculator(text),
     sortedEdits = edits.map(edit => {
@@ -15798,6 +15795,7 @@ class OffsetCalculator {
       return this.lineStartOffsetByLineIdx[position.line] + position.character
     }
 }
+
 class CodeReplyInterpreter {
   constructor(accessor, selectionContextMetadata, context, editStrategy, progress) {
     this._accessor = accessor
@@ -15819,7 +15817,7 @@ class CodeReplyInterpreter {
       this._selectionContextMetadata.contextInfo,
       this._context.fileIndentInfo
     )
-    let streamProcessor = new StreamProcessor(
+    let streamProcessor = new StreamProcessor1(
       this._streamingWorkingCopyDocument,
       this._context.language,
       this._context.selection,
@@ -15853,13 +15851,13 @@ class CodeReplyInterpreter {
       let newText = applyTextEdits(this._initialDocText, interpretedReply.edits)
       return {
         type: 'inlineEdit',
-        edits: [{ range: new VscodeRange(new VscodePosition(0, 0), new VscodePosition(Number.MAX_SAFE_INTEGER, 0)), newText: newText }],
+        edits: [{ range: new vscode.Range(new vscode.Position(0, 0), new vscode.Position(Number.MAX_SAFE_INTEGER, 0)), newText: newText }],
         newWholeRange: interpretedReply.newWholeRange,
       }
     }
     if (streamingResult) {
       this._progress.report({
-        edits: [{ range: new VscodeRange(new VscodePosition(0, 0), new VscodePosition(Number.MAX_SAFE_INTEGER, 0)), newText: this._initialDocText }],
+        edits: [{ range: new vscode.Range(new vscode.Position(0, 0), new vscode.Position(Number.MAX_SAFE_INTEGER, 0)), newText: this._initialDocText }],
       })
     }
     return interpretedReply
@@ -15908,7 +15906,7 @@ function processAnchors(anchors) {
       if (range1.contains(range2)) return range1
       if (range2.contains(range1)) return range2
       let [smaller, larger] = range1.start.line < range2.start.line ? [range1, range2] : [range2, range1]
-      if (smaller.end.line >= larger.start.line - 1) return new VscodeRange(smaller.start, larger.end)
+      if (smaller.end.line >= larger.start.line - 1) return new vscode.Range(smaller.start, larger.end)
     }
   return (
     anchors.forEach(anchorItem => {
@@ -16182,9 +16180,9 @@ var IntentDetector = class IntentDetector {
     try {
       if (document) {
         let selection = document.selection,
-          range = new VscodeRange(
-            new VscodePosition(Math.max(selection.start.line - 5, 0), 0),
-            new VscodePosition(Math.min(selection.end.line + 5, document.document.lineCount), document.document.lineAt(selection.end.line).text.length)
+          range = new vscode.Range(
+            new vscode.Position(Math.max(selection.start.line - 5, 0), 0),
+            new vscode.Position(Math.min(selection.end.line + 5, document.document.lineCount), document.document.lineAt(selection.end.line).text.length)
           )
         textExcerpt = document.document.getText(range)
       }
@@ -16523,7 +16521,7 @@ var ProjectManager = class {
     })
   }
   set(responseId, projectName, userPrompt, projectStructure, treeData, chatMessages) {
-    let projectSpecification = this.generatePlanPrompt.run(chatMessages, { PROJECT_DESCRIPTION: userPrompt, PROJECT_TREE_STRUCTURE: projectStructure }, new VscodeCancellationTokenSource().token)
+    let projectSpecification = this.generatePlanPrompt.run(chatMessages, { PROJECT_DESCRIPTION: userPrompt, PROJECT_TREE_STRUCTURE: projectStructure }, new vscode.CancellationTokenSource().token)
     this.promises.push(projectSpecification),
       this._getResponseScopedData(responseId).set(projectName, {
         userPrompt: userPrompt,
@@ -16557,7 +16555,7 @@ var ProjectManager = class {
       ? { ...treeData, children: treeData.children.map(child => this._prefetch(userPrompt, projectStructure, projectSpecification, child, chatMessages)), ctime: currentTime }
       : { ...treeData, content: undefined, ctime: currentTime }
   }
-  async _getFileContent(userPrompt, projectStructure, projectSpecification, filePath, chatMessages, cancellationToken = new VscodeCancellationTokenSource().token) {
+  async _getFileContent(userPrompt, projectStructure, projectSpecification, filePath, chatMessages, cancellationToken = new vscode.CancellationTokenSource().token) {
     return this.generateFilePrompt
       .run(chatMessages, { PROJECT_DESCRIPTION: userPrompt, PROJECT_TREE_STRUCTURE: projectStructure, PROJECT_SPECIFICATION: await projectSpecification, FILEPATH: filePath }, cancellationToken)
       .then(content => Buffer.from(content))
@@ -16605,7 +16603,7 @@ function registerNewWorkspaceIntent() {
   let newWorkspaceIntent = new Intent({
     location: 2,
     id: newWorkspaceIntentId,
-    description: requestLight.t('Scaffold code for a new workspace'),
+    description: l10n.t('Scaffold code for a new workspace'),
     modelDescription: 'Scaffolds a new project from scratch based on requirements from the user.',
     modelSampleQuestion: 'Create a RESTful API server using typescript',
     commandInfo: {
@@ -16614,7 +16612,7 @@ function registerNewWorkspaceIntent() {
       allowsEmptyArgs: false,
       yieldsTo: [{ command: 'fix' }, { command: 'explain' }, { command: 'workspace' }, { command: 'tests' }],
       defaultEnablement: true,
-      sampleRequest: requestLight.t('Create a RESTful API server using typescript'),
+      sampleRequest: l10n.t('Create a RESTful API server using typescript'),
     },
     systemPromptOptions: {
       examples: responseExamples,
@@ -16666,7 +16664,7 @@ function processNewWorkspaceResponse(context, response, reporter, messages) {
         let parsedFileTree = parseFileTree(fileTreeText),
           fileTreeItem = { treeData: generateFileTreeItem(requestId, parsedFileTree) }
         reporter.report({ content: beforeFileTree }),
-          reporter.report({ placeholder: requestLight.t('Generating workspace preview...'), resolvedContent: Promise.resolve(fileTreeItem) }),
+          reporter.report({ placeholder: l10n.t('Generating workspace preview...'), resolvedContent: Promise.resolve(fileTreeItem) }),
           reporter.report({ content: afterFileTree }),
           context.get(ProjectManager).set(requestId, fileTreeItem.treeData.label, requestMessage, fileTreeText, fileTreeItem, userMessages)
       } else if (message.trim().match(fileTreeEndRegex) && isFileTreeStarted && promiseOutcome) {
@@ -16675,13 +16673,13 @@ function processNewWorkspaceResponse(context, response, reporter, messages) {
         let parsedFileTree = parseFileTree(fileTreeText),
           fileTreeItem = { treeData: generateFileTreeItem(requestId, parsedFileTree) }
         fileTreeItem.treeData.children?.length === 0
-          ? promiseOutcome.complete({ content: requestLight.t('Sorry, something went wrong. Please try asking your question again.') })
+          ? promiseOutcome.complete({ content: l10n.t('Sorry, something went wrong. Please try asking your question again.') })
           : (promiseOutcome.complete(fileTreeItem), context.get(ProjectManager).set(requestId, fileTreeItem.treeData.label, requestMessage, fileTreeText, fileTreeItem, userMessages))
       } else
         message.match(fileTreeStartRegex) && !isFileTreeStarted && !promiseOutcome
           ? (isFileTreeStarted = true,
             promiseOutcome = new PromiseOutcome(),
-            reporter.report({ placeholder: requestLight.t('Generating workspace preview...'), resolvedContent: promiseOutcome.p }))
+            reporter.report({ placeholder: l10n.t('Generating workspace preview...'), resolvedContent: promiseOutcome.p }))
           : isFileTreeStarted
           ? (fileTreeText += message)
           : reporter.report({ content: message })
@@ -16725,7 +16723,7 @@ async function generateWorkspaceCommands(context, response) {
     createProjectCommand = {
       commandId: 'github.copilot.createProject',
       args: [response.request.message, projectItems, fileTreeText.replace(/\n/g, ''), response.sessionId, response.requestId],
-      title: requestLight.t('Create Workspace'),
+      title: l10n.t('Create Workspace'),
     }
 
   commands.push(createProjectCommand)
@@ -16827,7 +16825,7 @@ async function processErrorAndFix(workspace, options, document, error, context) 
     errorMessage = `${error.message}. ${errorCode}`,
     messageSource = { messageSource: 'slash.new' },
     range = error.range,
-    commandContext = { document: document, fileIndentInfo: void 0, language: getCommentSymbol(document), wholeRange: range, selection: new VscodeSelection(range.start, range.end) },
+    commandContext = { document: document, fileIndentInfo: void 0, language: getCommentSymbol(document), wholeRange: range, selection: new vscode.Selection(range.start, range.end) },
     commandResult = await processCommand(workspace, `/fix ${errorMessage}`, commandContext, void 0, generateTelemetryEvent(), context),
     endpoint = commandResult.intentInvocation.endpoint,
     messages = await generateMessages(commandResult, void 0, generateTelemetryEvent(), context),
@@ -16843,7 +16841,7 @@ async function processErrorAndFix(workspace, options, document, error, context) 
 }
 
 function generateUri(workspace, path) {
-  return VscodeUri.from({ scheme: 'vscode-copilot-workspace', authority: workspace ?? '', path: `/${path}` })
+  return vscode.Uri.from({ scheme: 'vscode-copilot-workspace', authority: workspace ?? '', path: `/${path}` })
 }
 
 var BaseEnvironment = class {}
@@ -18070,7 +18068,7 @@ var VariableResolver = class extends BaseEmptyClass {
       let cleanedKey = variableKey.replace(/^#/, ''),
         shortenFunction,
         selectedValue = variableValues.find(value => value.level === 3) ?? variableValues[0]
-      if (selectedValue.value instanceof VscodeUri) {
+      if (selectedValue.value instanceof vscode.Uri) {
         let uri = selectedValue.value
         selectedValue.value = wrapCodeWithBackticks('', (await fs.promises.readFile(selectedValue.value.fsPath)).toString()),
         shortenFunction = async () => formatContext(cleanedKey) + wrapCodeWithBackticks('', await this.shortenUriVariableValue(uri))
@@ -18118,24 +18116,22 @@ var FileSearcher = class extends FileFinder {
   }
 }
 var vscode = handleDefaultExports(require('vscode'))
-var TabManager = class extends BaseTabManager {
+var TabManager = class {
   constructor() {
     super()
-    this._disposableStore = new DisposableStore()
     this._tabGroupsUsageInfo = new Map()
     this._tabUsageCounter = 0
     this.onDidChangeActiveTextEditor = vscode.window.onDidChangeActiveTextEditor
     this.onDidChangeTabs = vscode.window.tabGroups.onDidChangeTabs
-    this._disposableStore.add(
-      vscode.window.tabGroups.onDidChangeTabGroups(tabGroupChangeEvent => {
-        tabGroupChangeEvent.closed.forEach(closedGroup => this._tabGroupsUsageInfo.delete(closedGroup)),
-          this._tabGroupsUsageInfo.set(vscode.window.tabGroups.activeTabGroup, this._tabUsageCounter++)
+    
+    vscode.window.tabGroups.onDidChangeTabGroups(tabGroupChangeEvent => {
+      tabGroupChangeEvent.closed.forEach(closedGroup => {
+        this._tabGroupsUsageInfo.delete(closedGroup)
       })
-    )
+        this._tabGroupsUsageInfo.set(vscode.window.tabGroups.activeTabGroup, this._tabUsageCounter++)
+    })
   }
-  dispose() {
-    this._disposableStore.dispose()
-  }
+
   get activeTextEditor() {
     let activeEditor = vscode.window.activeTextEditor
     if (activeEditor && activeEditor.document.uri.scheme !== 'output') return activeEditor
@@ -18149,9 +18145,11 @@ var TabManager = class extends BaseTabManager {
         if (tabInfo.uri && visibleEditorsMap.has(tabInfo.uri)) return visibleEditorsMap.get(tabInfo.uri)
       }
   }
+
   get tabs() {
     return vscode.window.tabGroups.all.flatMap(group => group.tabs).map(this._convertToTabInfo, this)
   }
+
   _convertToTabInfo(tab) {
     let uri
     return (
@@ -18467,7 +18465,7 @@ ${this.bodySeparator()}`)
     }
   }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var uGe = `
 [EXAMPLES START]
 Below you will find a set of examples of what you should respond with. Please follow these examples as closely as possible.
@@ -18537,7 +18535,7 @@ You can use the **Search marketplace** command to search for extensions that add
       roleplay:
         'You are a VS Code assistant. Your job is to assist users in using VS Code by providing knowledge to accomplish their task. This knowledge should focus on settings and commands, but also includes documentation. Please do not guess a response and instead just respond with a polite apology if you are unsure.',
     },
-    commandInfo: { allowsEmptyArgs: !1, sampleRequest: requestLight.t('What is the command to open the integrated terminal?') },
+    commandInfo: { allowsEmptyArgs: !1, sampleRequest: l10n.t('What is the command to open the integrated terminal?') },
     rules: `
 You must respond with either a setting to set or a command to execute when applicable.
 When referring to a command, you must use the command name in markdown bold syntax.
@@ -18556,7 +18554,7 @@ If an extension might help the user, you may suggest a search query for the exte
     followUps: loadAndProcessIndexes,
   })
 )
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var path = require('path')
 var openRelativePathCommand = '_github.copilot.openRelativePath',
   openSymbolInFileCommand = '_github.copilot.openSymbolInFile'
@@ -18637,7 +18635,7 @@ Think step by step:
 Remember that you MUST add links for all referenced symbols from the workspace and fully qualify the symbol name in the link, for example: [\`namespace.functionName\`](path/to/util.ts).
 Remember that you MUST add links for all workspace files, for example: [path/to/file.js](path/to/file.js)
 `.trim(),
-var exampleDialogue = `
+var exampleDialogue000 = `
 Question:
 What file implements base64 encoding?
 
@@ -18673,13 +18671,13 @@ var exampleDialogue = 'workspace',
 var workspaceIntent = new Intent({
     location: 2,
     id: exampleDialogue,
-    description: requestLight.t('Ask a question about the files in your current workspace'),
+    description: l10n.t('Ask a question about the files in your current workspace'),
     modelSampleQuestion: 'How do I build this project?',
-    commandInfo: { allowsEmptyArgs: !1, defaultEnablement: !0, sampleRequest: requestLight.t('How do I build this project?') },
+    commandInfo: { allowsEmptyArgs: !1, defaultEnablement: !0, sampleRequest: l10n.t('How do I build this project?') },
     systemPromptOptions: {
       roleplay:
         'You are a software engineer with expert knowledge of the codebase the user has open in their workspace.',
-      examples: exampleDialogue,
+      examples: exampleDialogue000,
     },
     rules: stepByStepGuide,
     contextResolvers: [contextResolverRegistry, currentSelectionContextResolver, workspaceResolver],
@@ -18699,7 +18697,7 @@ var TextProcessor2 = class {
       this._promise = this._promise.then(async () => {
         text.startsWith('```') && (this._isInCodeBlock = !this._isInCodeBlock),
           this._isInCodeBlock || (text = await textLinkifier.linkify(text, cancellationToken))
-        let markdownString = new VscodeMarkdownString(text)
+        let markdownString = new vscode.MarkdownString(text)
         return (
           (markdownString.isTrusted = { enabledCommands: [
             openRelativePathCommand, openSymbolInFileCommand] }),
@@ -18723,7 +18721,7 @@ var TextProcessor2 = class {
     )
   }
 }
-var requestLight = handleDefaultExports(requestLight()),
+var l10n = handleDefaultExports(l10n()),
 crypto = require('crypto')
 class FollowUpGenerator {
   constructor(accessor, messageConverter, options) {
@@ -18881,7 +18879,7 @@ var CopilotConversationManager = class {
     this.conversationLogger = conversationLogger
     this.isInternal = isInternal
     this.sessionId = sessionId
-    this.inputPlaceholder = requestLight.t('Ask Copilot or type / for commands')
+    this.inputPlaceholder = l10n.t('Ask Copilot or type / for commands')
     ;(this._microsoftTelemetryService = telemetryService.get(IMSTelemetryService)),
       (this.accessor = telemetryService),
       (this.conversation = new Conversation()),
@@ -18895,7 +18893,7 @@ var CopilotConversationManager = class {
   }
   get requester() {
     return {
-      name: this.username ?? requestLight.t('You'),
+      name: this.username ?? l10n.t('You'),
       icon: this.username ? Uri.parse(`https://avatars.githubusercontent.com/${this.username}`) : undefined,
     }
   }
@@ -18957,9 +18955,9 @@ var CopilotConversationManager = class {
     return newSession;
   }
   async _provideResponseWithProgress(e, r, n, i, o, s) {
-    if (i.isCancellationRequested) return (e.status = 'cancelled'), { errorDetails: { message: requestLight.t('Cancelled') } }
+    if (i.isCancellationRequested) return (e.status = 'cancelled'), { errorDetails: { message: l10n.t('Cancelled') } }
     try {
-      let a = this.accessor.get(BaseTabManager).activeTextEditor,
+      let a = this.accessor.get(TabManager).activeTextEditor,
         l = e.request.message
       this.conversationLogger?.logRequest(e.request)
       let c = { command: s.intentId ? CommandManager.getCommand(s.intentId, 2) : void 0, restOfQuery: l }
@@ -18969,7 +18967,7 @@ var CopilotConversationManager = class {
         return (
           y && ((b = `@${y.agent} `), y.command && (b += ` /${y.command}`), (b += ` ${c.command.details}`)),
           (e.response = {
-            message: requestLight.t(
+            message: l10n.t(
               `Please specify a question when using this command.
 
 Usage: {0}`,
@@ -19012,7 +19010,7 @@ Usage: {0}`,
         (o = extendTelemetryEventWithUserInput(this.conversation, this.sessionId, 'conversationPanel', l, g, u?.id, o)),
         i.isCancellationRequested)
       )
-        return (e.status = 'cancelled'), { errorDetails: { message: requestLight.t('Cancelled') } }
+        return (e.status = 'cancelled'), { errorDetails: { message: l10n.t('Cancelled') } }
       let _ = f?.responseProcessor
         ? f.responseProcessor(this.accessor, e, n, h, i)
         : new TextProcessor1([{ stop: '[COMMANDS START]' }], n)
@@ -19101,7 +19099,7 @@ Usage: {0}`,
         'conversationPanel',
         n,
         m.type === 'offTopic',
-        this.accessor.get(BaseTabManager).activeTextEditor?.document,
+        this.accessor.get(TabManager).activeTextEditor?.document,
         l
       ),
       m.type)
@@ -19119,7 +19117,7 @@ Usage: {0}`,
           (e.status = 'error'),
           {
             errorDetails: {
-              message: requestLight.t('Sorry, your request was rate-limited. Please wait and try sending again later.'),
+              message: l10n.t('Sorry, your request was rate-limited. Please wait and try sending again later.'),
               responseIsFiltered: !0,
             },
           }
@@ -19132,7 +19130,7 @@ Usage: {0}`,
           (e.status = 'filtered'),
           {
             errorDetails: {
-              message: requestLight.t({
+              message: l10n.t({
                 message:
                   'Sorry, the response matched public code so it was blocked. Please rephrase your prompt. [Learn more](https://aka.ms/copilot-chat-filtered-docs).',
                 comment: ["{Locked='](https://aka.ms/copilot-chat-filtered-docs)'}"],
@@ -19144,12 +19142,12 @@ Usage: {0}`,
       case 'length':
         return (
           (e.status = 'error'),
-          { errorDetails: { message: requestLight.t('Sorry, the response hit the length limit. Please rephrase your prompt.') } }
+          { errorDetails: { message: l10n.t('Sorry, the response hit the length limit. Please rephrase your prompt.') } }
         )
       case 'unknown':
         return (
           (e.status = 'error'),
-          { errorDetails: { message: requestLight.t('Sorry, no response was returned.'), responseIsFiltered: !1 } }
+          { errorDetails: { message: l10n.t('Sorry, no response was returned.'), responseIsFiltered: !1 } }
         )
     }
   }
@@ -19166,13 +19164,13 @@ Usage: {0}`,
           'conversationPanel',
           s,
           i,
-          this.accessor.get(BaseTabManager).activeTextEditor?.document,
+          this.accessor.get(TabManager).activeTextEditor?.document,
           o
         ),
         { followupsPromise: this.computeFollowups(!0, { messageId: o.properties.messageId }) })
       : ((r.status = 'error'),
         (r.response = {
-          message: requestLight.t(
+          message: l10n.t(
             'The model unexpectedly did not return a response, which may indicate a service issue. Please report a bug.'
           ),
           type: 'meta',
@@ -19193,7 +19191,7 @@ Usage: {0}`,
         'conversationPanel',
         n,
         i.properties.messageId,
-        this.accessor.get(BaseTabManager).activeTextEditor?.document,
+        this.accessor.get(TabManager).activeTextEditor?.document,
         o
       ),
       { followupsPromise: this.computeFollowups(!1) }
@@ -19215,7 +19213,7 @@ Usage: {0}`,
   refreshFollowupsCancellationToken() {
     this.lastResponseFollowupsCancellation?.cancel(),
       this.lastResponseFollowupsCancellation?.dispose(),
-      (this.lastResponseFollowupsCancellation = new VscodeCancellationTokenSource())
+      (this.lastResponseFollowupsCancellation = new vscode.CancellationTokenSource())
   }
   async computeFollowups(e = !0, r) {
     let n = this.lastResponseFollowupsCancellation.token,
@@ -19232,14 +19230,14 @@ Usage: {0}`,
 function generateSuggestion(message, context, metadata = {}) {
   metadata.suggestionId = (0, crypto.randomUUID)();
   metadata.suggestionType = 'Follow-up from model';
-  displaySuggestion(context, metadata.suggestionType, metadata.messageId, metadata.suggestionId, context.get(BaseTabManager).activeTextEditor?.document);
+  displaySuggestion(context, metadata.suggestionType, metadata.messageId, metadata.suggestionId, context.get(TabManager).activeTextEditor?.document);
   return { message, title: message, metadata };
 }
 var vscode = handleDefaultExports(require('vscode'))
 function generateSuggestion(message, context, metadata = {}) {
   metadata.suggestionId = (0, crypto.randomUUID)();
   metadata.suggestionType = 'Follow-up from model';
-  displaySuggestion(context, metadata.suggestionType, metadata.messageId, metadata.suggestionId, context.get(BaseTabManager).activeTextEditor?.document);
+  displaySuggestion(context, metadata.suggestionType, metadata.messageId, metadata.suggestionId, context.get(TabManager).activeTextEditor?.document);
   return { message, title: message, metadata };
 }
 
@@ -19562,13 +19560,13 @@ var MainComponent = class extends BaseComponent {
       return commitMessage.replace(/\*\*\*/gm, '').trim();
     }
   }
-var requestLight = handleDefaultExports(requestLight()),
+var l10n = handleDefaultExports(l10n()),
 crypto = require('crypto')
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var CodeEditor = class Editor {
   constructor() {
     this.id = Editor.ID
-    this.description = requestLight.t('Make changes to existing code')
+    this.description = l10n.t('Make changes to existing code')
     this.intentDetectionInput = {
       sampleQuestion: 'Change this method to use async/await',
       modelDescription: 'Make changes to existing code',
@@ -19583,11 +19581,11 @@ var CodeEditor = class Editor {
     return IntentHandler.createIntentInvocation(this, intent, context, 2)
   }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var CodeGenerator = class {
   constructor() {
     this.id = CodeGenerator.ID
-    this.description = requestLight.t('Generate new code')
+    this.description = l10n.t('Generate new code')
     this.intentDetectionInput = {
       sampleQuestion: 'Add a function that returns the sum of two numbers',
       modelDescription: 'Generate new code',
@@ -19603,7 +19601,7 @@ var CodeGenerator = class {
   }
 }
 var SamplingParameters = { top_p: 1, temperature: 0.1 }
-var Conversation = class {
+var Conversation1 = class {
   constructor(placeholder, slashCommands, wholeRange, document, formattingOptions, message, input, preferredIntent) {
     this.placeholder = placeholder
     this.slashCommands = slashCommands
@@ -19629,7 +19627,7 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
       this.accessor = accessor
       this.rejectionMessage = rejectionMessage
       ;(this.logger = accessor.get(LoggerManager).getPromptResponseLogger('interactiveEditor')),
-        (this.tabAndEditorsService = accessor.get(BaseTabManager)),
+        (this.tabAndEditorsService = accessor.get(TabManager)),
         (this.languageDiagnosticService = accessor.get(DiagnosticWaiter)),
         (this._microsoftTelemetryService = accessor.get(IMSTelemetryService)),
         this.logger.info(
@@ -19644,7 +19642,7 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
       }
       let n,
         i = this.languageDiagnosticService.getDiagnostics(e.document.uri).find(d => d.range.contains(e.selection))
-      i && (i.severity === VscodeDiagnosticSeverity.Warning || i.severity === VscodeDiagnosticSeverity.Error) && (n = `/fix ${i.message}`)
+      i && (i.severity === vscode.DiagnosticSeverity.Warning || i.severity === vscode.DiagnosticSeverity.Error) && (n = `/fix ${i.message}`)
       let o = {
           document: e.document,
           fileIndentInfo: r,
@@ -19658,13 +19656,13 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
           ? s.push(await d.intent.asSlashCommand(this.accessor, o))
           : s.push({ command: d.commandId, detail: d.details, executeImmediately: d.executeImmediately })
       let a = [
-        requestLight.t({
+        l10n.t({
             message: '{0} Copilot generated code may be incorrect',
             args: ['$(copilot-logo)'],
             comment: ["{Locked='Copilot'}", "Do not translate 'Copilot'"],
           }),
         ],
-        l = requestLight.t({
+        l = l10n.t({
           message: '{0} You can also type / for commands',
           args: ['$(copilot-logo)'],
           comment: ["{Locked='Copilot'}", "Do not translate 'Copilot'"],
@@ -19674,23 +19672,23 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
       e.selection.isEmpty && e.document.lineAt(e.selection.start.line).text.trim() === ''
         ? (a.push(
             l,
-            requestLight.t({
+            l10n.t({
               message: '{0} You can also select code to make an edit',
               args: ['$(copilot-logo)'],
               comment: ["{Locked='Copilot'}", "Do not translate 'Copilot'"],
             })
           ),
-          (u = requestLight.t('Ask Copilot to generate code...')),
+          (u = l10n.t('Ask Copilot to generate code...')),
           (c = CodeGenerator.ID))
         : !e.selection.isEmpty && e.selection.start.line !== e.selection.end.line
-        ? (a.push(l), (u = requestLight.t('Ask Copilot to edit code...')), (c = CodeEditor.ID))
-        : (u = requestLight.t('Ask Copilot or type / for commands'))
+        ? (a.push(l), (u = l10n.t('Ask Copilot to edit code...')), (c = CodeEditor.ID))
+        : (u = l10n.t('Ask Copilot or type / for commands'))
       let p = a[Math.floor(Math.random() * a.length)]
-      return new Conversation(u, s, e.selection, e.document, r, p, n, c)
+      return new Conversation1(u, s, e.selection, e.document, r, p, n, c)
     }
     async provideInteractiveEditorResponse(e, r, n, i) {
       this.logger.info(`CopilotInteractiveEditorSessionProvider query: ${r.prompt}`),
-        n.report({ message: requestLight.t('Fetching response...'), edits: [] }),
+        n.report({ message: l10n.t('Fetching response...'), edits: [] }),
         r.attempt === 0 && e.addRequest(r.prompt)
       let o = this.accessor.get(ConfigManager).getConfig(settings.InlineChatStreaming),
         s = r.live
@@ -19711,7 +19709,7 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
     }
     handleInteractiveEditorResponseFeedback(e, r, n) {
       if (
-        (this.logger.debug('CopilotInteractiveEditorSessionProvider feedback received'), n === VscodeInteractiveEditorResponseFeedbackKind.Bug && e.conversation)
+        (this.logger.debug('CopilotInteractiveEditorSessionProvider feedback received'), n === vscode.InteractiveEditorResponseFeedbackKind.Bug && e.conversation)
       ) {
         this.accessor.get(Reporter)?.reportInline(e.conversation, r.promptQuery, r.reply)
         return
@@ -19764,29 +19762,29 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
             { isNotebook: v, ...P }
           )
         }
-      if (n === VscodeInteractiveEditorResponseFeedbackKind.Helpful || n === VscodeInteractiveEditorResponseFeedbackKind.Unhelpful) {
-        let x = n === VscodeInteractiveEditorResponseFeedbackKind.Helpful ? 1 : 0
+      if (n === vscode.InteractiveEditorResponseFeedbackKind.Helpful || n === vscode.InteractiveEditorResponseFeedbackKind.Unhelpful) {
+        let x = n === vscode.InteractiveEditorResponseFeedbackKind.Helpful ? 1 : 0
         this._microsoftTelemetryService.sendTelemetryEvent('inline.action.vote', _, { ...y, vote: x }),
           b('interactiveSessionVote', { vote: x })
-      } else if (n === VscodeInteractiveEditorResponseFeedbackKind.Undone || n === VscodeInteractiveEditorResponseFeedbackKind.Accepted) {
-        let x = n === VscodeInteractiveEditorResponseFeedbackKind.Accepted ? 1 : 0
+      } else if (n === vscode.InteractiveEditorResponseFeedbackKind.Undone || n === vscode.InteractiveEditorResponseFeedbackKind.Accepted) {
+        let x = n === vscode.InteractiveEditorResponseFeedbackKind.Accepted ? 1 : 0
         this._microsoftTelemetryService.sendTelemetryEvent('inline.done', _, { ...y, accepted: x }),
           b('interactiveSessionDone', { accepted: x })
       }
       switch (n) {
-        case VscodeInteractiveEditorResponseFeedbackKind.Helpful:
+        case vscode.InteractiveEditorResponseFeedbackKind.Helpful:
           ;(i.rating = 'positive'), (o = 'inlineConversation.messageRating')
           break
-        case VscodeInteractiveEditorResponseFeedbackKind.Unhelpful:
+        case vscode.InteractiveEditorResponseFeedbackKind.Unhelpful:
           ;(i.rating = 'negative'), (o = 'inlineConversation.messageRating')
           break
-        case VscodeInteractiveEditorResponseFeedbackKind.Undone:
+        case vscode.InteractiveEditorResponseFeedbackKind.Undone:
           ;(i.action = 'undo'), (o = 'inlineConversation.undo')
           break
-        case VscodeInteractiveEditorResponseFeedbackKind.Accepted:
+        case vscode.InteractiveEditorResponseFeedbackKind.Accepted:
           ;(i.action = 'accept'), (o = 'inlineConversation.accept')
           break
-        case VscodeInteractiveEditorResponseFeedbackKind.Bug:
+        case vscode.InteractiveEditorResponseFeedbackKind.Bug:
           o = ''
           break
       }
@@ -19816,7 +19814,7 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
         h = new Session({ message: m, type: 'user' })
       ;(h.chatMessages = p),
         d.addTurn(h),
-        (s = extendTelemetryEventWithUserInput(d, e.sessionId, 'conversationInline', r.prompt, calculateTokenLength(this.accessor, p), u.intent.id, s))
+        (s = extendTelemetryEventWithUserInput(d, e.sessionId, 'conversationInline', r.prompt, calculateTokenLength1(this.accessor, p), u.intent.id, s))
       let g = s.properties.messageId
       ;(h.requestId = g), this.logger.logPrompt(p)
       let v,
@@ -20027,8 +20025,8 @@ CopilotInteractiveEditorSessionProvider = class CopilotInteractiveEditorSessionP
 
 function handleReply(reply, context) {
   let { promptQuery, parsedReply, messageId } = reply
-  if (parsedReply.type === 'conversational') return { contents: new VscodeMarkdownString(parsedReply.content), promptQuery, reply: parsedReply, messageId }
-  let contents = parsedReply.content !== void 0 ? new VscodeMarkdownString(parsedReply.content) : void 0
+  if (parsedReply.type === 'conversational') return { contents: new vscode.MarkdownString(parsedReply.content), promptQuery, reply: parsedReply, messageId }
+  let contents = parsedReply.content !== void 0 ? new vscode.MarkdownString(parsedReply.content) : void 0
   return parsedReply.type === 'workspaceEdit'
     ? { edits: parsedReply.workspaceEdit, promptQuery, reply: parsedReply, messageId, contents }
     : {
@@ -20037,11 +20035,11 @@ function handleReply(reply, context) {
         reply: parsedReply,
         promptQuery,
         messageId,
-        contents: parsedReply.content !== void 0 ? new VscodeMarkdownString(parsedReply.content) : void 0,
+        contents: parsedReply.content !== void 0 ? new vscode.MarkdownString(parsedReply.content) : void 0,
       }
 }
 
-function calculateTokenLength(tokenizer, tokens) {
+function calculateTokenLength1(tokenizer, tokens) {
   let totalLength = 0
   for (let token of tokens) totalLength += tokenizer.tokenLength(token.content)
   return totalLength
@@ -20082,7 +20080,7 @@ function generateDiagnosticsTelemetry(range, diagnostics) {
   let diagnosticsProvider = diagnostics.length > 0 ? diagnostics[0].source ?? '' : ''
   return { fileDiagnosticsTelemetry, selectionDiagnosticsTelemetry, diagnosticsProvider }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var TextProcessor = class {
   constructor(turn, progress, textApplier) {
     this.turn = turn
@@ -20240,7 +20238,7 @@ function createNewNotebookIntent() {
   let newNotebookIntent = new Intent({
     location: 2,
     id: 'newNotebook',
-    description: requestLight.t('Create a new Jupyter Notebook'),
+    description: l10n.t('Create a new Jupyter Notebook'),
     modelDescription:
       'Creates a new Jupyter Notebook for tasks such as data analysis, scientific computing, and machine learning.',
     modelSampleQuestion: 'How do I create a notebook to load data from a csv file?',
@@ -20248,7 +20246,7 @@ function createNewNotebookIntent() {
       allowsEmptyArgs: false,
       yieldsTo: [{ command: 'fix' }, { command: 'explain' }, { command: 'workspace' }, { command: 'tests' }],
       defaultEnablement: true,
-      sampleRequest: requestLight.t('How do I create a notebook to load data from a csv file?'),
+      sampleRequest: l10n.t('How do I create a notebook to load data from a csv file?'),
     },
     systemPromptOptions: {
       examples: exampleResponse,
@@ -20641,13 +20639,13 @@ var EditProvider = class {
   }
 }
 var vscode = handleDefaultExports(require('vscode'))
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var maxTextLength = 6e4,
   maxLineCount = 1500,
   DocumentationCommand = class Command {
     constructor() {
       this.id = Command.ID
-      this.description = requestLight.t('Add documentation comment for this symbol')
+      this.description = l10n.t('Add documentation comment for this symbol')
       this.intentDetectionInput = { sampleQuestion: 'Add jsdoc to this method' }
       this.locations = [1]
       this.commandInfo = { executeImmediately: true }
@@ -20660,8 +20658,8 @@ var maxTextLength = 6e4,
         return new SlashCommand('Add documentation comment for this symbol')
       let nodeToDocument = await DocumentSelectionResolver.determineNodeToDocument(accessor, context),
         detail = nodeToDocument.identifier
-          ? requestLight.t("Add documentation comment for '{0}'", nodeToDocument.identifier)
-          : requestLight.t('Add documentation comment for this symbol')
+          ? l10n.t("Add documentation comment for '{0}'", nodeToDocument.identifier)
+          : l10n.t('Add documentation comment for this symbol')
       return new SlashCommand(detail, nodeToDocument)
     }
     async invoke(accessor, context, slashCommand) {
@@ -20774,7 +20772,7 @@ var DocumentationAssistant = class Assistant {
     )
   }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var EXPLANATION_PROMPT = 'Write an explanation for the active selection as paragraphs of text.',
 explanationOptions = {
   systemPromptOptions: {
@@ -20794,7 +20792,7 @@ Use developer-friendly terms and analogies in your explanations.
 Identify 'gotchas' or less obvious parts of the code that might trip up someone new.
 Provide clear and relevant examples aligned with any provided context.
 `.trim(),
-  contextResolvers: [currentSelectionContextResolver, bY, contextResolverRegistry],
+  contextResolvers: [currentSelectionContextResolver, currentSelectionImplementationsResolver, contextResolverRegistry],
   turnFilter: turn => turn.map(message => (message.request.message.startsWith(EXPLANATION_PROMPT) && (message.request.message = EXPLANATION_PROMPT), message)),
 },
 DefaultPanelPromptCrafter = class {
@@ -20809,7 +20807,7 @@ ExplainIntent = class {
   constructor() {
     this.id = 'explain'
     this.locations = [2, 1]
-    this.description = requestLight.t('Explain how the selected code works')
+    this.description = l10n.t('Explain how the selected code works')
     this.intentDetectionInput = { sampleQuestion: 'Write an explanation for the code above as paragraphs of text.' }
   }
   static {
@@ -20829,7 +20827,7 @@ ExplainIntent = class {
             return super.buildPrompt(conversation, endpoint, context, reporter, prompt, message)
           }
         })(context, explanationOptions, 1, documentContext),
-        replyInterpreterFactory = documentContext && StreamProcessor.createFactory()
+        replyInterpreterFactory = documentContext && StreamProcessor2.createFactory()
       return { intent: this, location: location, endpoint: endpointInfo, promptCrafter: customChatBuilder, createReplyInterpreter: replyInterpreterFactory }
     }
     return { intent: this, location: location, endpoint: endpointInfo, promptCrafter: new DefaultPanelPromptCrafter(context) }
@@ -20958,7 +20956,7 @@ var RefactorProvider = class {
       nodeRange =
         documentableNode.nodeRange === undefined
           ? undefined
-          : new VscodeRange(document.positionAt(documentableNode.nodeRange.startIndex), document.positionAt(documentableNode.nodeRange.endIndex))
+          : new vscode.Range(document.positionAt(documentableNode.nodeRange.startIndex), document.positionAt(documentableNode.nodeRange.endIndex))
     action.command = {
       title: actionTitle,
       command: 'vscode.editorChat.start',
@@ -21011,7 +21009,7 @@ function registerCommands(context) {
       let message = `@${exampleDialogue} /explain `
       if (typeof input == 'string' && input) message = input
       else {
-        let currentSelection = CurrentSelectionContextResolver.getCurrentSelection(context.get(BaseTabManager))
+        let currentSelection = CurrentSelectionContextResolver.getCurrentSelection(context.get(TabManager))
         if (currentSelection) {
           let diagnostics = vscode.languages.getDiagnostics(currentSelection.activeDocument.uri),
             intersectingDiagnostics = diagnostics.filter(diagnostic => !!diagnostic.range.intersection(currentSelection.range))
@@ -21564,7 +21562,7 @@ function getStorageFileUri() {
 }
 
 async function gatherWorkspaceInfo(container, symbolNames) {
-  let tabManager = container.get(BaseTabManager),
+  let tabManager = container.get(TabManager),
     diagnosticWaiter = container.get(DiagnosticWaiter),
     symbolProvider = container.get(BaseSymbolProvider),
     workspace = container.get(WorkspaceClass),
@@ -22115,19 +22113,19 @@ var Environment = class extends BaseVscodeEnvironment {
     return { 'X-VSCode-Build': vscode.env.appName, 'X-VSCode-Language': vscode.env.language }
   }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var VsCodeExtensionDevelopmentIntent = class extends Intent {
   constructor() {
     super({
       location: 2,
       id: 'api',
-      description: requestLight.t('Ask about VS Code extension development'),
+      description: l10n.t('Ask about VS Code extension development'),
       systemPromptOptions: {
         roleplay:
           'You are an expert in VS Code extension development. You know how to use the VS Code API to extend the editor. Your task is to help the Developer with their VS Code extension development.',
       },
       modelSampleQuestion: 'How do I add text to the status bar?',
-      commandInfo: { sampleRequest: requestLight.t('How do I add text to the status bar?') },
+      commandInfo: { sampleRequest: l10n.t('How do I add text to the status bar?') },
       rules: `
 Assume the question is about VS Code extension development.
 Politely decline to answer if the question is not about VS Code extension development.
@@ -22140,7 +22138,7 @@ Only provide information to related VS Code extension development.`.trim(),
     })
   }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 function calculateUpdatedRange(originalRange, edits) {
   let updatedRange = originalRange
   for (let edit of edits) {
@@ -22164,7 +22162,7 @@ function calculateUpdatedRange(originalRange, edits) {
       : updatedRange.contains(edit.range)
       ? ((newStartLine = originalStart.line), (newEndLine = originalEnd.line + lineChange))
       : edit.range.contains(updatedRange) && ((newStartLine = start.line), (newEndLine = start.line + newLinesCount - 1)),
-      (updatedRange = new VscodeRange(newStartLine, 0, newEndLine, 0))
+      (updatedRange = new vscode.Range(newStartLine, 0, newEndLine, 0))
   }
   return updatedRange
 }
@@ -22173,12 +22171,12 @@ var modelVersions = { 3: 'gpt-3.5-turbo', 4: 'gpt-4', cl: 'code-llama' },
     constructor() {
       this.id = 'fix'
       this.locations = [1, 2]
-      this.description = requestLight.t('Propose a fix for the problems in the selected code')
+      this.description = l10n.t('Propose a fix for the problems in the selected code')
       this.intentDetectionInput = {
         sampleQuestion: 'There is a problem in this code. Rewrite the code to show it with the bug fixed.',
       }
       this.commandInfo = {
-        sampleRequest: requestLight.t('There is a problem in this code. Rewrite the code to show it with the bug fixed.'),
+        sampleRequest: l10n.t('There is a problem in this code. Rewrite the code to show it with the bug fixed.'),
       }
     }
     static {
@@ -22277,13 +22275,13 @@ Given a description of what to do you can refactor, fix or enhance the existing 
         return errorDiagnostics.length === 1
           ? [
               {
-                title: requestLight.t('An error remains after applying the change, click here to iterate.'),
+                title: l10n.t('An error remains after applying the change, click here to iterate.'),
                 message: `/fix ${errorDiagnostics[0].message}`,
               },
             ]
           : [
               {
-                title: requestLight.t('{0} errors remain after applying the change, click here to iterate.', errorDiagnostics.length),
+                title: l10n.t('{0} errors remain after applying the change, click here to iterate.', errorDiagnostics.length),
                 message: '/fix Fix the remaining errors',
               },
             ]
@@ -22310,7 +22308,7 @@ var CodeFixWithRulesHandler = class extends CodeFixHandler {
 `) +
         `
 `
-    edits.push(new VscodeTextEdit(new VscodeRange(contextMetadata.expandedRange.start, contextMetadata.expandedRange.start), pipCommandsBlock)),
+    edits.push(new vscode.TextEdit(new vscode.Range(contextMetadata.expandedRange.start, contextMetadata.expandedRange.start), pipCommandsBlock)),
     otherLines.length &&
         edits.push(
           ...super.generateEdits(
@@ -22322,7 +22320,7 @@ var CodeFixWithRulesHandler = class extends CodeFixHandler {
     return edits
   }
 }
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var questionExample = `
 ### Question:
 Search for 'foo' in all files under my 'src' directory.
@@ -22545,7 +22543,7 @@ function registerSearchIntent(isEnabledByDefault) {
   let searchIntent = new Intent({
     location: 2,
     id: 'search',
-    description: requestLight.t('Generate query parameters for workspace search'),
+    description: l10n.t('Generate query parameters for workspace search'),
     modelSampleQuestion: "Search for 'foo' in all files under my 'src' directory",
     systemPromptOptions: {
       examples: questionExample,
@@ -22555,7 +22553,7 @@ function registerSearchIntent(isEnabledByDefault) {
     commandInfo: {
       allowsEmptyArgs: false,
       defaultEnablement: isEnabledByDefault,
-      sampleRequest: requestLight.t("Search for 'foo' in all files under my 'src' directory"),
+      sampleRequest: l10n.t("Search for 'foo' in all files under my 'src' directory"),
     },
     rules: `
 The user's question is ALWAYS related to search or replace. When the user's question does not seem to be related to searching or replacing, you MUST assume that they're searching for or replacing what they are describing.
@@ -22603,7 +22601,7 @@ I want the JSON object of search parameters to be in this format:
 }
 
 ContributionManager.registerContribution(registerSearchIntent)
-var requestLight = handleDefaultExports(requestLight()),
+var l10n = handleDefaultExports(l10n()),
 process = require('process')
 var commandExamples = `
 User: How do I revert a specific commit?
@@ -22713,7 +22711,7 @@ var commandPromptConfiguration = {
       multipleCommands = false,
       responseMessage = response.response?.message
     if (responseMessage) {
-      let codeBlocks = extractCodeBlocks(responseMessage)
+      let codeBlocks = extractCodeBlocks1(responseMessage)
       if (codeBlocks.length === 0) return []
       codeBlocks.length === 1
         ? (explanationPrompt = `@${terminal} Explain this command:
@@ -22744,11 +22742,11 @@ var TerminalIntent = class {
   constructor() {
     this.locations = [2]
     this.id = 'terminal'
-    this.description = requestLight.t('Ask how to do something in the terminal')
+    this.description = l10n.t('Ask how to do something in the terminal')
     this.intentDetectionInput = {
       sampleQuestion: 'How do I view all files within a directory including sub-directories',
     }
-    this.commandInfo = { sampleRequest: requestLight.t('How do I view all files within a directory including sub-directories') }
+    this.commandInfo = { sampleRequest: l10n.t('How do I view all files within a directory including sub-directories') }
   }
   async invoke(context, request, session) {
     let location = request.location,
@@ -22757,12 +22755,12 @@ var TerminalIntent = class {
   }
 }
 
-var requestLight = handleDefaultExports(requestLight())
+var l10n = handleDefaultExports(l10n())
 var TestGeneratorIntent = class {
   constructor() {
     this.id = 'tests'
     this.locations = [2, 1]
-    this.description = requestLight.t('Generate unit tests for the selected code')
+    this.description = l10n.t('Generate unit tests for the selected code')
     this.intentDetectionInput = { sampleQuestion: 'Write a set of detailed unit test functions for the code above.' }
     this.commandInfo = undefined
   }
@@ -22823,18 +22821,18 @@ var NonTestFileHandler = class {
         document = this.documentContext.document
       if (this.existingTestFile) {
         let testDocument = await this.accessor.get(WorkspaceClass).openTextDocument(this.existingTestFile),
-          workspaceEdit = new VscodeWorkspaceEdit()
+          workspaceEdit = new vscode.WorkspaceEdit()
         return (
-          workspaceEdit.set(this.existingTestFile, [VscodeTextEdit.insert(new VscodePosition(testDocument.lineCount, 0), code)]),
+          workspaceEdit.set(this.existingTestFile, [vscode.TextEdit.insert(new vscode.Position(testDocument.lineCount, 0), code)]),
           { type: 'workspaceEdit', workspaceEdit: workspaceEdit }
         )
       }
       let testFileName = generateTestFileName(document),
-        testFileUri = VscodeUri.joinPath(document.uri, `../${testFileName}`).with({ scheme: resourceTypes.untitled }),
-        workspaceEdit = new VscodeWorkspaceEdit()
+        testFileUri = vscode.Uri.joinPath(document.uri, `../${testFileName}`).with({ scheme: resourceTypes.untitled }),
+        workspaceEdit = new vscode.WorkspaceEdit()
       return (
         workspaceEdit.createFile(testFileUri, { ignoreIfExists: true }),
-        workspaceEdit.replace(testFileUri, new VscodeRange(0, 0, 0, 0), code),
+        workspaceEdit.replace(testFileUri, new vscode.Range(0, 0, 0, 0), code),
         { type: 'workspaceEdit', workspaceEdit: workspaceEdit }
       )
     })
@@ -23144,7 +23142,7 @@ function parseProxyUrl(proxyUrl) {
 
 var fs = handleDefaultExports(require('fs'))
 var FileSystemOperations = class extends BaseFileSystemOperations {
-  async getFileStats(fileUri) {
+  async stat(fileUri) {
     let stats = await fs.promises.stat(fileUri.fsPath);
     return { type: stats.isFile() ? 1 : 2, ctime: stats.ctimeMs, mtime: stats.mtimeMs, size: stats.size };
   }
@@ -23407,62 +23405,87 @@ function initializeServices(context) {
   context.define(DocsSearchClient, new DocsSearchClient(context));
 }
 var copilotChatChannel = vscode.window.createOutputChannel('GitHub Copilot Chat', { log: true })
-async function activateExtension(extensionContext, e) {
-  if (extensionContext.extensionMode === vscode.ExtensionMode.Test && !e) return extensionContext
-  vscode.l10n.bundle && Bx.config({ contents: vscode.l10n.bundle })
-  let r = await createContext(extensionContext)
-  extensionContext.subscriptions.push(deactivateExtension(r)),
+
+async function activateExtension(extensionContext, event) {
+  if (extensionContext.extensionMode === vscode.ExtensionMode.Test && !event) return extensionContext;
+  
+  if (vscode.l10n.bundle) {
+    l10n.config({ contents: vscode.l10n.bundle });
+  }
+
+  let context = await createContext(extensionContext);
+  
+  extensionContext.subscriptions.push(deactivateExtension(context));
   extensionContext.subscriptions.push(
-      vscode.window.registerTerminalQuickFixProvider('copilot-chat.fixWithCopilot', {
-        provideTerminalQuickFixes(o, s) {
-          return [
-            { command: 'github.copilot.terminal.explainTerminalLastCommand', title: Bx.t('Explain using Copilot') },
-          ]
-        },
-      })
-    ),
-    extensionContext.subscriptions.push(
-      vscode.window.registerTerminalQuickFixProvider('copilot-chat.generateCommitMessage', {
-        async provideTerminalQuickFixes(o, s) {
-          return [{ command: 'github.copilot.terminal.generateCommitMessage', title: Bx.t('Generate Commit Message') }]
-        },
-      })
-    )
-  let n = r.get(IGHTelemetryService)
+    vscode.window.registerTerminalQuickFixProvider('copilot-chat.fixWithCopilot', {
+      provideTerminalQuickFixes() {
+        return [
+          { command: 'github.copilot.terminal.explainTerminalLastCommand', title: l10n.t('Explain using Copilot') },
+        ];
+      },
+    })
+  );
+  extensionContext.subscriptions.push(
+    vscode.window.registerTerminalQuickFixProvider('copilot-chat.generateCommitMessage', {
+      async provideTerminalQuickFixes() {
+        return [{ command: 'github.copilot.terminal.generateCommitMessage', title: l10n.t('Generate Commit Message') }];
+      },
+    })
+  );
+
+  let telemetryService = context.get(IGHTelemetryService);
+
   if (
-    (await (async () => {
-      let o = a => {
-        let l = a.message || a
-        n.sendErrorTelemetry('activationFailed', TelemetryEvent.createAndMarkAsIssued({ reason: l })), n.deactivate()
-        let c =
-          l === 'GitHubLoginFailed'
+    await (async () => {
+      let handleActivationError = async error => {
+        let errorMessage = error.message || error;
+        telemetryService.sendErrorTelemetry('activationFailed', TelemetryEvent.createAndMarkAsIssued({ reason: errorMessage }));
+        telemetryService.deactivate();
+
+        let notificationMessage =
+          errorMessage === 'GitHubLoginFailed'
             ? notSignedInMessage
-            : `GitHub Copilot could not connect to server. Extension activation failed: "${l}"`
-        r.get(LoggerManager).defaultLogger.error(c), vscode.commands.executeCommand('setContext', 'github.copilot.activated', !1)
-        let u = vscode.authentication.onDidChangeSessions(async p => {
+            : `GitHub Copilot could not connect to server. Extension activation failed: "${errorMessage}"`;
+
+        context.get(LoggerManager).defaultLogger.error(notificationMessage);
+        vscode.commands.executeCommand('setContext', 'github.copilot.activated', false);
+
+        let sessionChangeHandler = vscode.authentication.onDidChangeSessions(async provider => {
           try {
-            ;(await handleProvider(p, r)) !== void 0 &&
-              (vscode.commands.executeCommand('setContext', 'github.copilot.activated', !0), updateCopilotStatus(r), u.dispose())
-          } catch (d) {
-            updateCopilotStatus(r, d), o(d)
+            if ((await handleProvider(provider, context)) !== undefined) {
+              vscode.commands.executeCommand('setContext', 'github.copilot.activated', true);
+              updateCopilotStatus(context);
+              sessionChangeHandler.dispose();
+            }
+          } catch (error) {
+            updateCopilotStatus(context, error);
+            handleActivationError(error);
           }
-        })
-      }
+        });
+      };
+
       try {
-        await r.get(BaseTokenHandler).getCopilotToken(r), vscode.commands.executeCommand('setContext', 'github.copilot.activated', !0)
-      } catch (a) {
-        r.get(ConnectionSettings).isDNSLookupFailedError(a) && extensionContext.subscriptions.push(registerOfflineCommand(r, o)), updateCopilotStatus(r, a), o(a)
+        await context.get(BaseTokenHandler).getCopilotToken(context);
+        vscode.commands.executeCommand('setContext', 'github.copilot.activated', true);
+      } catch (error) {
+        if (context.get(ConnectionSettings).isDNSLookupFailedError(error)) {
+          extensionContext.subscriptions.push(registerOfflineCommand(context, handleActivationError));
+        }
+        updateCopilotStatus(context, error);
+        handleActivationError(error);
       }
-      extensionContext.subscriptions.push(vscode.workspace.onDidChangeConfiguration(a => updateBaseUrlOnConfigChange(a, r)))
-      let s = extensionContext.extensionMode !== vscode.ExtensionMode.Development
-      initializeWorker(s, r.get(LoggerManager).getLogger('parser proxy')),
-      initializeExtension(r),
-        ContributionManager.start(r.get(BuildInfo).isPreRelease()),
-        n.sendTelemetry('extension.activate')
+
+      extensionContext.subscriptions.push(vscode.workspace.onDidChangeConfiguration(config => updateBaseUrlOnConfigChange(config, context)));
+
+      let isNotDevelopmentMode = extensionContext.extensionMode !== vscode.ExtensionMode.Development;
+      initializeWorker(isNotDevelopmentMode, context.get(LoggerManager).getLogger('parser proxy'));
+      initializeExtension(context);
+      ContributionManager.start(context.get(BuildInfo).isPreRelease());
+      telemetryService.sendTelemetry('extension.activate');
     })(),
-    vscode.ExtensionMode.Test === extensionContext.extensionMode)
+    vscode.ExtensionMode.Test === extensionContext.extensionMode
   )
-    return r
+    return context;
 }
 async function createContext(extensionContext) {
   let instanceAccessor = new InstanceAccessor()
@@ -23474,7 +23497,7 @@ async function createContext(extensionContext) {
   instanceAccessor.define(EmbeddingsIndex, new EmbeddingsIndex(instanceAccessor)),
   instanceAccessor.define(FileFinder, new FileSearcher(instanceAccessor))
   let tabManager = new TabManager()
-  instanceAccessor.define(BaseTabManager, tabManager),
+  instanceAccessor.define(TabManager, tabManager),
   instanceAccessor.define(BaseGitExtensionService, new GitExtensionService(instanceAccessor)),
   instanceAccessor.define(BaseGitRepositoryManager, new GitRepositoryManager(tabManager)),
   instanceAccessor.define(DiagnosticWaiter, new DiagnosticListener()),
@@ -23508,19 +23531,19 @@ async function createContext(extensionContext) {
   instanceAccessor.define(EmbeddingsComputer, new EmbeddingComputer(instanceAccessor)),
   instanceAccessor.define(Reporter, new FeedbackReporter(instanceAccessor)),
   instanceAccessor.define(NotificationHandler, new WarningNotificationHandler()),
-  instanceAccessor.define(BaseVscodeEnvironment, new Environment()),
+  instanceAccessor.define(BaseEnvironment, new Environment()),
   instanceAccessor.define(BaseGithubApiService, new GithubApiService(instanceAccessor.get(ConfigManager))),
   instanceAccessor.define(conversationOptions, {
     maxResponseTokens: undefined,
     temperature: 0.1,
     topP: 1,
     additionalPromptContext: instanceAccessor.get(ConfigManager).getConfig(settings.ConversationAdditionalPromptContext),
-    rejectionMessage: Bx.t('Sorry, but I can only assist with programming related questions.'),
+    rejectionMessage: l10n.t('Sorry, but I can only assist with programming related questions.'),
   }),
   handleProxyConfigurationChange(instanceAccessor.get(ConnectionSettings), process.env),
   registerExperimentFilters(instanceAccessor)
-let workspaceManager = new WorkspaceManager(instanceAccessor)
-instanceAccessor.define(WorkspaceClass, workspaceManager),
+  let workspaceManager = new WorkspaceManager(instanceAccessor)
+  instanceAccessor.define(WorkspaceClass, workspaceManager),
   instanceAccessor.define(CommandRelatedInfoProvider, new CommandRelatedInfoProvider(instanceAccessor, instanceAccessor.get(EmbeddingsComputer))),
   instanceAccessor.define(SettingsRelatedInfoProvider, new SettingsRelatedInfoProvider(instanceAccessor, instanceAccessor.get(EmbeddingsComputer))),
   instanceAccessor.define(IndexLoader, new IndexLoader(instanceAccessor)),
